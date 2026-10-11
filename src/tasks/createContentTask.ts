@@ -4,16 +4,14 @@ import { createContentPayloadSchema } from "../schemas/contentCreationSchema";
 import { logStep } from "../sandboxes/logStep";
 import { fetchGithubFile } from "../content/fetchGithubFile";
 import { resolveFaceGuide } from "../content/resolveFaceGuide";
+import { trimAudioClip } from "../content/trimAudioClip";
 import { resolveAudioClip } from "../content/resolveAudioClip";
 import { fetchArtistContext } from "../content/fetchArtistContext";
 import { fetchAudienceContext } from "../content/fetchAudienceContext";
 import { renderFinalVideo } from "../content/renderFinalVideo";
 import { resolveBaseImage } from "../content/resolveBaseImage";
 import { loadTemplate, buildMotionPrompt } from "../content/loadTemplate";
-import {
-  upscaleMedia,
-  generateVideo,
-} from "../recoup/contentApi";
+import { upscaleMedia, generateVideo } from "../recoup/contentApi";
 import { resolveCaptionText } from "../content/resolveCaptionText";
 
 /**
@@ -41,7 +39,7 @@ export const createContentTask = schemaTask({
   retry: {
     maxAttempts: 0,
   },
-  run: async payload => {
+  run: async (payload) => {
     await tags.add(`account:${payload.accountId}`);
 
     logStep("create-content task started", true, {
@@ -63,13 +61,14 @@ export const createContentTask = schemaTask({
     const template = await loadTemplate(payload.template);
 
     // --- Step 2: Resolve face-guide, editorial image, and classify attached images ---
-    const { faceGuideUrl, editorialImageUrl, additionalImageUrls } = await resolveFaceGuide({
-      usesFaceGuide: template.usesFaceGuide,
-      usesEditorialImage: template.usesImageOverlay,
-      images: payload.images,
-      githubRepo: payload.githubRepo,
-      artistSlug: payload.artistSlug,
-    });
+    const { faceGuideUrl, editorialImageUrl, additionalImageUrls } =
+      await resolveFaceGuide({
+        usesFaceGuide: template.usesFaceGuide,
+        usesEditorialImage: template.usesImageOverlay,
+        images: payload.images,
+        githubRepo: payload.githubRepo,
+        artistSlug: payload.artistSlug,
+      });
 
     // --- Step 3: Select audio clip ---
     const audioClip = await resolveAudioClip(payload);
@@ -77,10 +76,14 @@ export const createContentTask = schemaTask({
     // --- Step 4: Fetch artist/audience context ---
     logStep("Fetching artist context");
     const artistContext = await fetchArtistContext(
-      payload.githubRepo, payload.artistSlug, fetchGithubFile,
+      payload.githubRepo,
+      payload.artistSlug,
+      fetchGithubFile
     );
     const audienceContext = await fetchAudienceContext(
-      payload.githubRepo, payload.artistSlug, fetchGithubFile,
+      payload.githubRepo,
+      payload.artistSlug,
+      fetchGithubFile
     );
 
     // --- Steps 5–6: Resolve base image (editorial → use as-is, otherwise generate + optional upscale) ---
@@ -98,7 +101,16 @@ export const createContentTask = schemaTask({
 
     if (payload.lipsync) {
       logStep("Uploading audio for lipsync");
-      const audioFile = new File([audioClip.songBuffer], "song.mp3", { type: "audio/mpeg" });
+      const selectedClip = await trimAudioClip(
+        audioClip.songBuffer,
+        audioClip.startSeconds,
+        audioClip.durationSeconds
+      );
+      const audioFile = new File(
+        [new Uint8Array(selectedClip)],
+        "selected-clip.mp3",
+        { type: "audio/mpeg" }
+      );
       audioUrl = await fal.storage.upload(audioFile);
     }
 
@@ -107,6 +119,7 @@ export const createContentTask = schemaTask({
       imageUrl,
       prompt: motionPrompt,
       audioUrl,
+      duration: audioClip.durationSeconds,
     });
 
     // --- Step 8: Upscale video (API, optional) ---
@@ -116,14 +129,18 @@ export const createContentTask = schemaTask({
     }
 
     // --- Step 9: Resolve caption text (skipped when captionLength === "none") ---
-    logStep("Resolving caption", true, { captionLength: payload.captionLength });
+    logStep("Resolving caption", true, {
+      captionLength: payload.captionLength,
+    });
     const captionTopic = [
       `Song: "${audioClip.songTitle}"`,
       audioClip.clipLyrics ? `Lyrics: "${audioClip.clipLyrics}"` : null,
       audioClip.clipMood ? `Mood: ${audioClip.clipMood}` : null,
       artistContext ? `Artist: ${artistContext}` : null,
       audienceContext ? `Audience: ${audienceContext}` : null,
-    ].filter(Boolean).join(". ");
+    ]
+      .filter(Boolean)
+      .join(". ");
 
     const captionText = await resolveCaptionText({
       captionLength: payload.captionLength,
@@ -139,8 +156,10 @@ export const createContentTask = schemaTask({
       audioStartSeconds: audioClip.startSeconds,
       audioDurationSeconds: audioClip.durationSeconds,
       captionText,
-      hasAudio: payload.lipsync,
-      overlayImageUrls: template.usesImageOverlay ? additionalImageUrls : undefined,
+      requireGeneratedAudio: payload.lipsync,
+      overlayImageUrls: template.usesImageOverlay
+        ? additionalImageUrls
+        : undefined,
     });
 
     // --- Return result ---
@@ -163,7 +182,8 @@ export const createContentTask = schemaTask({
         clipMood: audioClip.clipMood,
       },
       captionText,
-      message: "Full content pipeline complete — AI image + video + audio + caption",
+      message:
+        "Full content pipeline complete — AI image + video + audio + caption",
     };
 
     logStep("Complete", true, {

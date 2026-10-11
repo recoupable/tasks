@@ -63,6 +63,12 @@ vi.mock("../../content/renderFinalVideo", () => ({
     sizeBytes: 5000,
   }),
 }));
+const mockTrimAudioClip = vi
+  .fn()
+  .mockResolvedValue(Buffer.from("selected-clip-only"));
+vi.mock("../../content/trimAudioClip", () => ({
+  trimAudioClip: (...args: unknown[]) => mockTrimAudioClip(...args),
+}));
 vi.mock("../../content/loadTemplate", () => ({
   loadTemplate: vi.fn().mockResolvedValue({
     name: "artist-caption-bedroom",
@@ -81,9 +87,15 @@ vi.mock("../../content/loadTemplate", () => ({
 }));
 
 // Mock the NEW API wrappers
-const mockGenerateImage = vi.fn().mockResolvedValue("https://api.test/image.png");
-const mockUpscaleMedia = vi.fn().mockImplementation((url: string) => Promise.resolve(`${url}?upscaled`));
-const mockGenerateVideo = vi.fn().mockResolvedValue("https://api.test/video.mp4");
+const mockGenerateImage = vi
+  .fn()
+  .mockResolvedValue("https://api.test/image.png");
+const mockUpscaleMedia = vi
+  .fn()
+  .mockImplementation((url: string) => Promise.resolve(`${url}?upscaled`));
+const mockGenerateVideo = vi
+  .fn()
+  .mockResolvedValue("https://api.test/video.mp4");
 const mockGenerateCaption = vi.fn().mockResolvedValue("caption from api");
 
 vi.mock("../../recoup/contentApi", () => ({
@@ -107,14 +119,16 @@ describe("createContentTask (API integration)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.FAL_KEY = "test-fal-key";
-    mockFalStorageUpload.mockResolvedValue("https://fal.storage/face-guide.png");
+    mockFalStorageUpload.mockResolvedValue(
+      "https://fal.storage/face-guide.png"
+    );
   });
 
   it("calls generateImage API instead of internal function", async () => {
     await mockRun(VALID_PAYLOAD);
     expect(mockGenerateImage).toHaveBeenCalledTimes(1);
     expect(mockGenerateImage).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: expect.any(String) }),
+      expect.objectContaining({ prompt: expect.any(String) })
     );
   });
 
@@ -125,14 +139,17 @@ describe("createContentTask (API integration)", () => {
       expect.objectContaining({
         imageUrl: expect.any(String),
         prompt: expect.any(String),
-      }),
+      })
     );
   });
 
   it("calls generateCaption API with artist and audience context in topic", async () => {
     await mockRun(VALID_PAYLOAD);
     expect(mockGenerateCaption).toHaveBeenCalledTimes(1);
-    const callArgs = mockGenerateCaption.mock.calls[0][0] as Record<string, unknown>;
+    const callArgs = mockGenerateCaption.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
     const topic = callArgs.topic as string;
     expect(topic).toContain("Artist identity info");
     expect(topic).toContain("Audience info");
@@ -159,8 +176,24 @@ describe("createContentTask (API integration)", () => {
     await mockRun({ ...VALID_PAYLOAD, lipsync: true });
     expect(mockGenerateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
-        audioUrl: expect.any(String),
-      }),
+        audioUrl: "https://fal.storage/song.mp3",
+        duration: 8,
+      })
+    );
+    expect(mockTrimAudioClip).toHaveBeenCalledWith(
+      Buffer.from("fake-mp3"),
+      30,
+      8
+    );
+    const file = mockFalStorageUpload.mock.calls
+      .map((call) => call[0] as File)
+      .find((file) => file.name === "selected-clip.mp3")!;
+    expect(Buffer.from(await file.arrayBuffer())).toEqual(
+      Buffer.from("selected-clip-only")
+    );
+    const { renderFinalVideo } = await import("../../content/renderFinalVideo");
+    expect(renderFinalVideo).toHaveBeenCalledWith(
+      expect.objectContaining({ requireGeneratedAudio: true })
     );
   });
 
