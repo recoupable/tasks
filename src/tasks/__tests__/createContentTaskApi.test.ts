@@ -176,7 +176,7 @@ describe("createContentTask (API integration)", () => {
     await mockRun({ ...VALID_PAYLOAD, lipsync: true });
     expect(mockGenerateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
-        audioUrl: expect.any(String),
+        audioUrl: "https://fal.storage/song.mp3",
         duration: 8,
       })
     );

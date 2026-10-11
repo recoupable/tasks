@@ -29,7 +29,7 @@ const input = {
 describe("generated audio evidence before delivery", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("rejects a silent lipsync output before rendering or uploading", async () => {
+  it("rejects a lipsync output without an audio stream before rendering or uploading", async () => {
     vi.mocked(probeMediaAudio).mockResolvedValue(false);
     await expect(renderFinalVideo(input)).rejects.toThrow(
       "Lipsync video has no audio stream"
@@ -48,8 +48,11 @@ describe("generated audio evidence before delivery", () => {
   });
 
   it("overlays the selected song for ordinary video even if the provider emitted audio", async () => {
-    vi.mocked(probeMediaAudio).mockResolvedValue(true);
+    vi.mocked(probeMediaAudio).mockRejectedValue(
+      new Error("probe must not run")
+    );
     await renderFinalVideo({ ...input, requireGeneratedAudio: false });
+    expect(probeMediaAudio).not.toHaveBeenCalled();
     expect(buildFfmpegArgs).toHaveBeenCalledWith(
       expect.objectContaining({ hasAudio: false, audioStartSeconds: 30 })
     );

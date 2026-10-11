@@ -46,10 +46,12 @@ export async function renderFinalVideo(
   try {
     logStep("Downloading video for final render");
     await downloadMediaToFile(input.videoUrl, videoPath);
-    const generatedHasAudio = await probeMediaAudio(videoPath);
+    const generatedHasAudio = input.requireGeneratedAudio
+      ? await probeMediaAudio(videoPath)
+      : false;
     if (input.requireGeneratedAudio && !generatedHasAudio) {
       throw new Error(
-        "Lipsync video has no audio stream; refusing to deliver a silent result"
+        "Lipsync video has no audio stream; refusing to deliver this result"
       );
     }
     const hasAudio = input.requireGeneratedAudio && generatedHasAudio;

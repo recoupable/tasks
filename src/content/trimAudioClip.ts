@@ -2,6 +2,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runFfmpeg } from "./runFfmpeg";
+import { probeMediaDuration } from "./probeMediaDuration";
 
 /** Upload only the selected song window to the audio-driven generator. */
 export async function trimAudioClip(
@@ -25,6 +26,12 @@ export async function trimAudioClip(
   const output = join(directory, "selected-clip.mp3");
   try {
     await writeFile(source, song);
+    const sourceDuration = await probeMediaDuration(source);
+    // Allow MP3 encoder padding, but never silently accept a truncated selection.
+    if (start + duration > sourceDuration + 0.05)
+      throw new Error(
+        "Invalid lipsync audio window: selection exceeds the song duration"
+      );
     await runFfmpeg([
       "-y",
       "-ss",
@@ -38,6 +45,10 @@ export async function trimAudioClip(
       "libmp3lame",
       output,
     ]);
+    if (Math.abs((await probeMediaDuration(output)) - duration) > 0.1)
+      throw new Error(
+        "Invalid lipsync audio window: trimmed duration does not match selection"
+      );
     return await readFile(output);
   } finally {
     await rm(directory, { recursive: true, force: true });
