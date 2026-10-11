@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { writeFile, unlink, mkdir } from "node:fs/promises";
+import { writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logStep } from "../sandboxes/logStep";
@@ -8,6 +8,7 @@ import { calculateCaptionLayout } from "./calculateCaptionLayout";
 import { stripEmoji } from "./stripEmoji";
 import { downloadOverlayImages } from "./downloadOverlayImages";
 import { downloadMediaToFile } from "./downloadMediaToFile";
+import { probeMediaAudio } from "./probeMediaAudio";
 import { runFfmpeg } from "./runFfmpeg";
 import { uploadToFalStorage } from "./uploadToFalStorage";
 
@@ -17,7 +18,7 @@ export interface RenderFinalVideoInput {
   audioStartSeconds: number;
   audioDurationSeconds: number;
   captionText: string;
-  hasAudio: boolean;
+  requireGeneratedAudio: boolean;
   overlayImageUrls?: string[];
 }
 
@@ -32,7 +33,7 @@ export interface RenderFinalVideoOutput {
  * crops 16:9 → 9:16, overlays audio + captions + images, uploads to fal.ai storage.
  */
 export async function renderFinalVideo(
-  input: RenderFinalVideoInput,
+  input: RenderFinalVideoInput
 ): Promise<RenderFinalVideoOutput> {
   const tempDir = join(tmpdir(), `content-render-${randomUUID()}`);
   await mkdir(tempDir, { recursive: true });
@@ -45,9 +46,19 @@ export async function renderFinalVideo(
   try {
     logStep("Downloading video for final render");
     await downloadMediaToFile(input.videoUrl, videoPath);
+    const generatedHasAudio = await probeMediaAudio(videoPath);
+    if (input.requireGeneratedAudio && !generatedHasAudio) {
+      throw new Error(
+        "Lipsync video has no audio stream; refusing to deliver a silent result"
+      );
+    }
+    const hasAudio = input.requireGeneratedAudio && generatedHasAudio;
     await writeFile(audioPath, input.songBuffer);
 
-    overlayPaths = await downloadOverlayImages(input.overlayImageUrls ?? [], tempDir);
+    overlayPaths = await downloadOverlayImages(
+      input.overlayImageUrls ?? [],
+      tempDir
+    );
 
     const cleanCaption = stripEmoji(input.captionText);
     const captionLayout = calculateCaptionLayout(cleanCaption);
@@ -59,24 +70,34 @@ export async function renderFinalVideo(
       outputPath,
       audioStartSeconds: input.audioStartSeconds,
       audioDurationSeconds: input.audioDurationSeconds,
-      hasAudio: input.hasAudio,
+      hasAudio,
       overlayImagePaths: overlayPaths,
     });
 
     logStep("Running ffmpeg render", true, {
-      hasAudio: input.hasAudio,
+      hasAudio,
       overlayCount: overlayPaths.length,
     });
 
     await runFfmpeg(ffmpegArgs);
 
     logStep("Final video rendered, uploading to fal.ai storage");
-    const result = await uploadToFalStorage(outputPath, "final-video.mp4", "video/mp4");
-    logStep("Final video uploaded to fal.ai storage", false, { videoUrl: result.url, sizeBytes: result.sizeBytes });
+    const result = await uploadToFalStorage(
+      outputPath,
+      "final-video.mp4",
+      "video/mp4"
+    );
+    logStep("Final video uploaded to fal.ai storage", false, {
+      videoUrl: result.url,
+      sizeBytes: result.sizeBytes,
+    });
 
-    return { videoUrl: result.url, mimeType: result.mimeType, sizeBytes: result.sizeBytes };
+    return {
+      videoUrl: result.url,
+      mimeType: result.mimeType,
+      sizeBytes: result.sizeBytes,
+    };
   } finally {
-    const cleanupPaths = [videoPath, audioPath, outputPath, ...overlayPaths];
-    await Promise.all(cleanupPaths.map((p) => unlink(p).catch(() => undefined)));
+    await rm(tempDir, { recursive: true, force: true });
   }
 }

@@ -9,7 +9,10 @@ describe("generateImage", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("calls POST /api/content/image with prompt and reference images", async () => {
-    mockCallRecoupApi.mockResolvedValue({ imageUrl: "https://fal.media/img.png", images: ["https://fal.media/img.png"] });
+    mockCallRecoupApi.mockResolvedValue({
+      imageUrl: "https://fal.media/img.png",
+      images: ["https://fal.media/img.png"],
+    });
 
     const { generateImage } = await import("../contentApi");
     const url = await generateImage({
@@ -20,23 +23,34 @@ describe("generateImage", () => {
 
     expect(mockCallRecoupApi).toHaveBeenCalledWith("/api/content/image", {
       prompt: "a portrait photo",
-      reference_image_url: "https://example.com/face.png",
-      images: ["https://example.com/ref1.png"],
+      image_urls: [
+        "https://example.com/face.png",
+        "https://example.com/ref1.png",
+      ],
     });
     expect(url).toBe("https://fal.media/img.png");
   });
 
   it("filters out non-URL strings from images array", async () => {
-    mockCallRecoupApi.mockResolvedValue({ imageUrl: "https://fal.media/img.png", images: ["https://fal.media/img.png"] });
+    mockCallRecoupApi.mockResolvedValue({
+      imageUrl: "https://fal.media/img.png",
+      images: ["https://fal.media/img.png"],
+    });
 
     const { generateImage } = await import("../contentApi");
     await generateImage({
       prompt: "a portrait",
-      images: ["https://example.com/valid.png", "references/images/local-path.png"],
+      images: [
+        "https://example.com/valid.png",
+        "references/images/local-path.png",
+      ],
     });
 
-    const callArgs = mockCallRecoupApi.mock.calls[0][1] as Record<string, unknown>;
-    const images = callArgs.images as string[];
+    const callArgs = mockCallRecoupApi.mock.calls[0][1] as Record<
+      string,
+      unknown
+    >;
+    const images = callArgs.image_urls as string[];
     expect(images).toEqual(["https://example.com/valid.png"]);
   });
 });
@@ -45,7 +59,9 @@ describe("upscaleMedia", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("calls POST /api/content/upscale for image", async () => {
-    mockCallRecoupApi.mockResolvedValue({ url: "https://fal.media/upscaled.png" });
+    mockCallRecoupApi.mockResolvedValue({
+      url: "https://fal.media/upscaled.png",
+    });
 
     const { upscaleMedia } = await import("../contentApi");
     const url = await upscaleMedia("https://example.com/img.png", "image");
@@ -58,7 +74,9 @@ describe("upscaleMedia", () => {
   });
 
   it("calls POST /api/content/upscale for video", async () => {
-    mockCallRecoupApi.mockResolvedValue({ url: "https://fal.media/upscaled.mp4" });
+    mockCallRecoupApi.mockResolvedValue({
+      url: "https://fal.media/upscaled.mp4",
+    });
 
     const { upscaleMedia } = await import("../contentApi");
     const url = await upscaleMedia("https://example.com/vid.mp4", "video");
@@ -75,7 +93,10 @@ describe("generateVideo", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("calls POST /api/content/video with image_url and prompt", async () => {
-    mockCallRecoupApi.mockResolvedValue({ videoUrl: "https://fal.media/vid.mp4", mode: "animate" });
+    mockCallRecoupApi.mockResolvedValue({
+      videoUrl: "https://fal.media/vid.mp4",
+      mode: "animate",
+    });
 
     const { generateVideo } = await import("../contentApi");
     const url = await generateVideo({
@@ -86,12 +107,16 @@ describe("generateVideo", () => {
     expect(mockCallRecoupApi).toHaveBeenCalledWith("/api/content/video", {
       image_url: "https://example.com/img.png",
       prompt: "gentle breathing motion",
+      duration: 15,
     });
     expect(url).toBe("https://fal.media/vid.mp4");
   });
 
   it("passes audio_url for lipsync mode", async () => {
-    mockCallRecoupApi.mockResolvedValue({ videoUrl: "https://fal.media/vid.mp4", mode: "lipsync" });
+    mockCallRecoupApi.mockResolvedValue({
+      videoUrl: "https://fal.media/vid.mp4",
+      mode: "lipsync",
+    });
 
     const { generateVideo } = await import("../contentApi");
     await generateVideo({
@@ -100,10 +125,11 @@ describe("generateVideo", () => {
       audioUrl: "https://example.com/song.mp3",
     });
 
-    expect(mockCallRecoupApi).toHaveBeenCalledWith("/api/content/video", {
+    expect(mockCallRecoupApi).toHaveBeenCalledWith("/api/content/lipsync", {
       image_url: "https://example.com/img.png",
       prompt: "singing",
       audio_url: "https://example.com/song.mp3",
+      duration: 15,
     });
   });
 });
@@ -134,7 +160,12 @@ describe("generateCaption", () => {
   it("omits template if not in API's template list", async () => {
     // First call: GET /api/content/templates returns the known list
     mockCallRecoupApi
-      .mockResolvedValueOnce({ templates: [{ id: "artist-caption-bedroom" }, { id: "album-record-store" }] })
+      .mockResolvedValueOnce({
+        templates: [
+          { id: "artist-caption-bedroom" },
+          { id: "album-record-store" },
+        ],
+      })
       // Second call: POST /api/content/caption
       .mockResolvedValueOnce({ content: "editorial caption" });
 
@@ -147,7 +178,10 @@ describe("generateCaption", () => {
 
     // Should have called templates API first, then caption without template
     expect(mockCallRecoupApi).toHaveBeenCalledTimes(2);
-    const captionArgs = mockCallRecoupApi.mock.calls[1][1] as Record<string, unknown>;
+    const captionArgs = mockCallRecoupApi.mock.calls[1][1] as Record<
+      string,
+      unknown
+    >;
     expect(captionArgs).not.toHaveProperty("template");
   });
 
@@ -163,7 +197,10 @@ describe("generateCaption", () => {
       length: "short",
     });
 
-    const captionArgs = mockCallRecoupApi.mock.calls[1][1] as Record<string, unknown>;
+    const captionArgs = mockCallRecoupApi.mock.calls[1][1] as Record<
+      string,
+      unknown
+    >;
     expect(captionArgs.template).toBe("artist-caption-bedroom");
   });
 });
