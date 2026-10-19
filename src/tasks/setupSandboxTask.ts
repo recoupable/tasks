@@ -26,7 +26,11 @@ export const setupSandboxTask = schemaTask({
 
     try {
       logStep("Provisioning sandbox");
-      const { githubRepo } = await provisionSandbox(sandbox, sandboxId, accountId);
+      const { githubRepo, githubPublished } = await provisionSandbox(
+        sandbox,
+        sandboxId,
+        accountId,
+      );
       logStep("Provisioning complete", false);
 
       logStep("Taking snapshot");
@@ -35,6 +39,12 @@ export const setupSandboxTask = schemaTask({
         accountId,
         githubRepo,
       );
+
+      if (!githubPublished) {
+        throw new Error(
+          `Git publication was not confirmed. Unpublished work retained in recovery snapshot ${snapshotResult.snapshotId}; reconcile before publishing again.`,
+        );
+      }
 
       logStep("Sandbox setup complete", true, {
         sandboxId: sandbox.name,

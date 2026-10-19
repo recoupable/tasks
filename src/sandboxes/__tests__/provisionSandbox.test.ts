@@ -78,10 +78,17 @@ describe("provisionSandbox", () => {
   });
 
   it("still calls pushSandboxToGithub when ensureSetupSandbox throws", async () => {
-    vi.mocked(ensureSetupSandbox).mockRejectedValueOnce(new Error("skill timeout"));
+    vi.mocked(ensureSetupSandbox).mockRejectedValueOnce(
+      new Error("skill timeout"),
+    );
     const result = await provisionSandbox(mockSandbox, "sbx_123", "acc_456");
 
     expect(pushSandboxToGithub).toHaveBeenCalledWith(mockSandbox);
     expect(result.githubRepo).toBe("https://github.com/org/repo");
+  });
+  it("propagates unconfirmed publication to the setup caller", async () => {
+    vi.mocked(pushSandboxToGithub).mockResolvedValueOnce(false);
+    const result = await provisionSandbox(mockSandbox, "sbx_123", "acc_456");
+    expect(result.githubPublished).toBe(false);
   });
 });

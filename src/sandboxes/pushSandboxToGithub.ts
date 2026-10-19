@@ -1,5 +1,7 @@
 import type { Sandbox } from "@vercel/sandbox";
 import { logger } from "@trigger.dev/sdk/v3";
+import { readSandboxMainRevision } from "./readSandboxMainRevision";
+import { pushSandboxMainIfUnchanged } from "./pushSandboxMainIfUnchanged";
 import { runGitCommand } from "./runGitCommand";
 import { copyOpenClawToRepo } from "./copyOpenClawToRepo";
 import { addOrgSubmodules } from "./git/addOrgSubmodules";
@@ -10,14 +12,14 @@ import { pushOrgRepos } from "./git/pushOrgRepos";
  * Commits and pushes all local sandbox files to the GitHub repository.
  *
  * Configures git user, stages all files, commits, and pushes to origin main.
- * Skips the push if there are no changes to commit.
+ * Publishes only against the observed remote main; conflicts keep local commits.
  *
  * @param sandbox - The Vercel Sandbox instance
- * @returns true if push succeeded or there were no changes, false on error
+ * @returns true only when publication is confirmed; false retains local work
  */
-export async function pushSandboxToGithub(
-  sandbox: Sandbox
-): Promise<boolean> {
+export async function pushSandboxToGithub(sandbox: Sandbox): Promise<boolean> {
+  const observed = await readSandboxMainRevision(sandbox);
+  if (!observed) return false;
   logger.log("Pushing sandbox files to GitHub");
 
   // Configure git user for commits
@@ -25,7 +27,7 @@ export async function pushSandboxToGithub(
     !(await runGitCommand(
       sandbox,
       ["config", "user.email", "agent@recoupable.com"],
-      "configure git email"
+      "configure git email",
     ))
   ) {
     return false;
@@ -35,7 +37,7 @@ export async function pushSandboxToGithub(
     !(await runGitCommand(
       sandbox,
       ["config", "user.name", "Recoup Agent"],
-      "configure git name"
+      "configure git name",
     ))
   ) {
     return false;
@@ -64,32 +66,21 @@ export async function pushSandboxToGithub(
     args: ["diff", "--cached", "--quiet"],
   });
 
-  if (diffResult.exitCode !== 0) {
+  if (diffResult.exitCode !== 0 && diffResult.exitCode !== 1) return false;
+  if (diffResult.exitCode === 1) {
     // There are staged changes — commit them
     if (
       !(await runGitCommand(
         sandbox,
         ["commit", "-m", "Update sandbox files"],
-        "commit changes"
+        "commit changes",
       ))
     ) {
       return false;
     }
   }
 
-  // Clean up any stale rebase state from previous failed runs
-  await sandbox.runCommand({ cmd: "git", args: ["rebase", "--abort"] });
-
-  // Force push — sandbox files are the source of truth
-  if (
-    !(await runGitCommand(
-      sandbox,
-      ["push", "--force", "origin", "HEAD:main"],
-      "push to remote"
-    ))
-  ) {
-    return false;
-  }
+  if (!(await pushSandboxMainIfUnchanged(sandbox, observed))) return false;
 
   logger.log("Sandbox files pushed to GitHub successfully");
   return true;
