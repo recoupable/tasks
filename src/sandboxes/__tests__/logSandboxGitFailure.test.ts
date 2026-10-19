@@ -26,3 +26,12 @@ it("never logs credential-bearing Git output or exception text", () => {
   expect(logged).not.toContain("github.com");
   expect(logged).toContain("authentication_or_access");
 });
+
+it("identifies stale local history from ancestry exit 1 with empty stderr", () => {
+  logSandboxGitFailure("check_ancestry", 1, "");
+  expect(logger.error).toHaveBeenCalledWith(expect.any(String), {
+    stage: "check_ancestry",
+    exitCode: 1,
+    category: "stale_local_history",
+  });
+});

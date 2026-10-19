@@ -42,6 +42,10 @@ it("never treats a remote read failure as a missing branch", async () => {
     f.runCommand.mock.calls.some(([call]) => call.args[0] === "push"),
   ).toBe(false);
   expect(f.git(f.worker, "show", "HEAD:draft.txt")).toBe("worker replacement");
+  expect(f.runCommand).toHaveBeenCalledWith({
+    cmd: "git",
+    args: ["ls-remote", "--exit-code", "--heads", "origin", "refs/heads/main"],
+  });
   expect(readFileSync(join(f.worker, "draft.txt"), "utf8")).toBe(
     "worker replacement\n",
   );

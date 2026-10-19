@@ -46,6 +46,7 @@ export const setupSandboxTask = schemaTask({
         if (githubPublished === false) {
           throw new Error(
             `Git publication and recovery snapshot are unconfirmed. Preserve sandbox ${sandboxId} for recovery; no explicit shutdown attempted.`,
+            { cause: error },
           );
         }
         throw error;

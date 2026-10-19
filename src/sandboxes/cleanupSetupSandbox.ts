@@ -18,10 +18,15 @@ export async function cleanupSetupSandbox(
     await sandbox.stop();
   } catch (error) {
     if (!operationFailed) throw error;
+    const errorKind =
+      error instanceof Error &&
+      ["Error", "AbortError", "TimeoutError"].includes(error.name)
+        ? error.name
+        : "UnknownError";
     logStep(
       "Sandbox shutdown also failed; preserving original task error",
       false,
-      { sandboxId },
+      { sandboxId, errorKind },
     );
   }
 }
