@@ -1,47 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@trigger.dev/sdk/v3", () => ({
-  logger: { log: vi.fn(), error: vi.fn() },
-  schemaTask: vi.fn((config) => config),
-}));
-
-const mockStop = vi.fn().mockResolvedValue(undefined);
-
-vi.mock("../../sandboxes/getOrCreateSandbox", () => ({
-  getOrCreateSandbox: vi.fn().mockResolvedValue({
-    sandboxId: "sbx_123",
-    sandbox: {
-      sandboxId: "sbx_123",
-      status: "running",
-      stop: mockStop,
-    },
-  }),
-}));
-
-vi.mock("../../sandboxes/logStep", () => ({
-  logStep: vi.fn(),
-}));
-
-vi.mock("../../sandboxes/provisionSandbox", () => ({
-  provisionSandbox: vi
-    .fn()
-    .mockResolvedValue({ githubRepo: "https://github.com/org/repo" }),
-}));
-
-vi.mock("../../sandboxes/snapshotAndPersist", () => ({
-  snapshotAndPersist: vi.fn().mockResolvedValue({
-    snapshotId: "snap_abc",
-    expiresAt: new Date("2026-03-12"),
-  }),
-}));
-
+import { mockStop } from "./setupSandboxTask.fixture";
 const { setupSandboxTask } = await import("../setupSandboxTask");
 const { getOrCreateSandbox } = await import(
   "../../sandboxes/getOrCreateSandbox"
 );
-const { provisionSandbox } = await import(
-  "../../sandboxes/provisionSandbox"
-);
+const { provisionSandbox } = await import("../../sandboxes/provisionSandbox");
 const { snapshotAndPersist } = await import(
   "../../sandboxes/snapshotAndPersist"
 );
@@ -98,5 +62,17 @@ describe("setupSandboxTask", () => {
 
   it("has maxDuration of 15 minutes", () => {
     expect(setupSandboxTask.maxDuration).toBe(60 * 15);
+  });
+  it("preserves a recovery snapshot before reporting unconfirmed publication", async () => {
+    vi.mocked(provisionSandbox).mockResolvedValueOnce({
+      githubRepo: "https://github.com/org/repo",
+      githubPublished: false,
+    });
+    await expect(run({ accountId: "acc_1" })).rejects.toThrow("snap_abc");
+    expect(snapshotAndPersist).toHaveBeenCalledTimes(1);
+    expect(mockStop).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(snapshotAndPersist).mock.invocationCallOrder[0],
+    ).toBeLessThan(mockStop.mock.invocationCallOrder[0]);
   });
 });

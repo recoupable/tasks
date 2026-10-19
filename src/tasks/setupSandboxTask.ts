@@ -1,6 +1,7 @@
 import { schemaTask } from "@trigger.dev/sdk/v3";
 import { getOrCreateSandbox } from "../sandboxes/getOrCreateSandbox";
 import { logStep } from "../sandboxes/logStep";
+import { cleanupSetupSandbox } from "../sandboxes/cleanupSetupSandbox";
 import { snapshotAndPersist } from "../sandboxes/snapshotAndPersist";
 import { provisionSandbox } from "../sandboxes/provisionSandbox";
 import { setupSandboxPayloadSchema } from "../schemas/setupSandboxSchema";
@@ -24,17 +25,39 @@ export const setupSandboxTask = schemaTask({
 
     const { sandboxId, sandbox } = await getOrCreateSandbox(accountId);
 
+    let safeToStop = true;
+    let operationFailed = false;
     try {
       logStep("Provisioning sandbox");
-      const { githubRepo } = await provisionSandbox(sandbox, sandboxId, accountId);
+      const { githubRepo, githubPublished } = await provisionSandbox(
+        sandbox,
+        sandboxId,
+        accountId,
+      );
       logStep("Provisioning complete", false);
 
+      safeToStop = githubPublished !== false;
       logStep("Taking snapshot");
       const snapshotResult = await snapshotAndPersist(
         sandbox,
         accountId,
         githubRepo,
-      );
+      ).catch((error: unknown) => {
+        if (githubPublished === false) {
+          throw new Error(
+            `Git publication and recovery snapshot are unconfirmed. Preserve sandbox ${sandboxId} for recovery; no explicit shutdown attempted.`,
+            { cause: error },
+          );
+        }
+        throw error;
+      });
+      safeToStop = true;
+
+      if (githubPublished === false) {
+        throw new Error(
+          `Git publication was not confirmed. Unpublished work retained in recovery snapshot ${snapshotResult.snapshotId}; reconcile before publishing again.`,
+        );
+      }
 
       logStep("Sandbox setup complete", true, {
         sandboxId: sandbox.name,
@@ -46,9 +69,16 @@ export const setupSandboxTask = schemaTask({
         githubRepo: githubRepo ?? null,
         snapshotId: snapshotResult.snapshotId,
       };
+    } catch (error) {
+      operationFailed = true;
+      throw error;
     } finally {
-      logStep("Stopping sandbox", false, { sandboxId: sandbox.name });
-      await sandbox.stop();
+      await cleanupSetupSandbox(
+        sandbox,
+        sandboxId,
+        safeToStop,
+        operationFailed,
+      );
     }
   },
 });

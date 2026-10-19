@@ -1,37 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@trigger.dev/sdk/v3", () => ({
-  logger: { log: vi.fn(), error: vi.fn() },
-  metadata: { set: vi.fn(), append: vi.fn() },
-}));
-
-vi.mock("../installOpenClaw", () => ({
-  installOpenClaw: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../setupOpenClaw", () => ({
-  setupOpenClaw: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../ensureGithubRepo", () => ({
-  ensureGithubRepo: vi.fn().mockResolvedValue("https://github.com/org/repo"),
-}));
-
-vi.mock("../writeReadme", () => ({
-  writeReadme: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../ensureOrgRepos", () => ({
-  ensureOrgRepos: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../ensureSetupSandbox", () => ({
-  ensureSetupSandbox: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../pushSandboxToGithub", () => ({
-  pushSandboxToGithub: vi.fn().mockResolvedValue(true),
-}));
+import "./provisionSandbox.fixture";
 
 const { provisionSandbox } = await import("../provisionSandbox");
 const { installOpenClaw } = await import("../installOpenClaw");
@@ -78,10 +47,17 @@ describe("provisionSandbox", () => {
   });
 
   it("still calls pushSandboxToGithub when ensureSetupSandbox throws", async () => {
-    vi.mocked(ensureSetupSandbox).mockRejectedValueOnce(new Error("skill timeout"));
+    vi.mocked(ensureSetupSandbox).mockRejectedValueOnce(
+      new Error("skill timeout"),
+    );
     const result = await provisionSandbox(mockSandbox, "sbx_123", "acc_456");
 
     expect(pushSandboxToGithub).toHaveBeenCalledWith(mockSandbox);
     expect(result.githubRepo).toBe("https://github.com/org/repo");
+  });
+  it("propagates unconfirmed publication to the setup caller", async () => {
+    vi.mocked(pushSandboxToGithub).mockResolvedValueOnce(false);
+    const result = await provisionSandbox(mockSandbox, "sbx_123", "acc_456");
+    expect(result.githubPublished).toBe(false);
   });
 });

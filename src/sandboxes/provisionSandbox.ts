@@ -10,6 +10,7 @@ import { logStep } from "./logStep";
 
 interface ProvisionSandboxResult {
   githubRepo: string | undefined;
+  githubPublished: boolean | null;
 }
 
 /**
@@ -19,7 +20,7 @@ interface ProvisionSandboxResult {
  * @param sandbox - The Vercel Sandbox instance
  * @param sandboxId - The sandbox identifier
  * @param accountId - The account ID that owns the sandbox
- * @returns The GitHub repo URL if configured
+ * @returns The configured repository and whether its publication was confirmed
  */
 export async function provisionSandbox(
   sandbox: Sandbox,
@@ -46,8 +47,14 @@ export async function provisionSandbox(
     });
   }
 
-  logStep("Pushing to GitHub");
-  await pushSandboxToGithub(sandbox);
+  logStep(
+    githubRepo
+      ? "Pushing to GitHub"
+      : "No root repository configured; skipping root publication",
+  );
+  const githubPublished = githubRepo
+    ? await pushSandboxToGithub(sandbox)
+    : null;
 
-  return { githubRepo: githubRepo ?? undefined };
+  return { githubRepo: githubRepo ?? undefined, githubPublished };
 }
