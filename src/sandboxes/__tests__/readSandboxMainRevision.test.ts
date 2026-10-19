@@ -17,6 +17,7 @@ it.each([
     const runCommand = vi.fn(async () => ({
       exitCode,
       stdout: async () => output,
+      stderr: async () => "Synthetic command error",
     }));
     expect(
       await readSandboxMainRevision({ runCommand } as unknown as Sandbox),

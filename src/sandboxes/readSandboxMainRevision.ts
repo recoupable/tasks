@@ -1,5 +1,5 @@
 import type { Sandbox } from "@vercel/sandbox";
-import { logger } from "@trigger.dev/sdk";
+import { logSandboxGitFailure } from "./logSandboxGitFailure";
 
 /** null means observation failed; { sha: null } means main was absent. */
 export async function readSandboxMainRevision(
@@ -22,11 +22,13 @@ export async function readSandboxMainRevision(
       output,
     );
     if (result.exitCode === 0 && match) return { sha: match[1] };
-  } catch {
-    // A transport failure must never be interpreted as an empty remote branch.
+    logSandboxGitFailure(
+      "observe_remote",
+      result.exitCode,
+      await result.stderr(),
+    );
+  } catch (error) {
+    logSandboxGitFailure("observe_remote", null, error);
   }
-  logger.error(
-    "Cannot observe remote main; publication stopped without a push.",
-  );
   return null;
 }

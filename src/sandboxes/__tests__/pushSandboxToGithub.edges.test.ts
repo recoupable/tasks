@@ -38,7 +38,10 @@ it("never treats a remote read failure as a missing branch", async () => {
   roots.push(f.root);
   f.git(f.worker, "remote", "set-url", "origin", join(f.root, "missing.git"));
   expect(await pushSandboxToGithub(f.sandbox)).toBe(false);
-  expect(f.runCommand).toHaveBeenCalledTimes(1);
+  expect(
+    f.runCommand.mock.calls.some(([call]) => call.args[0] === "push"),
+  ).toBe(false);
+  expect(f.git(f.worker, "show", "HEAD:draft.txt")).toBe("worker replacement");
   expect(readFileSync(join(f.worker, "draft.txt"), "utf8")).toBe(
     "worker replacement\n",
   );

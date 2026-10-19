@@ -18,8 +18,6 @@ import { pushOrgRepos } from "./git/pushOrgRepos";
  * @returns true only when publication is confirmed; false retains local work
  */
 export async function pushSandboxToGithub(sandbox: Sandbox): Promise<boolean> {
-  const observed = await readSandboxMainRevision(sandbox);
-  if (!observed) return false;
   logger.log("Pushing sandbox files to GitHub");
 
   // Configure git user for commits
@@ -66,7 +64,12 @@ export async function pushSandboxToGithub(sandbox: Sandbox): Promise<boolean> {
     args: ["diff", "--cached", "--quiet"],
   });
 
-  if (diffResult.exitCode !== 0 && diffResult.exitCode !== 1) return false;
+  if (diffResult.exitCode !== 0 && diffResult.exitCode !== 1) {
+    logger.error("Cannot check staged changes; publication stopped", {
+      exitCode: diffResult.exitCode,
+    });
+    return false;
+  }
   if (diffResult.exitCode === 1) {
     // There are staged changes — commit them
     if (
@@ -80,6 +83,8 @@ export async function pushSandboxToGithub(sandbox: Sandbox): Promise<boolean> {
     }
   }
 
+  const observed = await readSandboxMainRevision(sandbox);
+  if (!observed) return false;
   if (!(await pushSandboxMainIfUnchanged(sandbox, observed))) return false;
 
   logger.log("Sandbox files pushed to GitHub successfully");

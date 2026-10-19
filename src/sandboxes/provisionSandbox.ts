@@ -10,7 +10,7 @@ import { logStep } from "./logStep";
 
 interface ProvisionSandboxResult {
   githubRepo: string | undefined;
-  githubPublished: boolean;
+  githubPublished: boolean | null;
 }
 
 /**
@@ -47,8 +47,14 @@ export async function provisionSandbox(
     });
   }
 
-  logStep("Pushing to GitHub");
-  const githubPublished = await pushSandboxToGithub(sandbox);
+  logStep(
+    githubRepo
+      ? "Pushing to GitHub"
+      : "No root repository configured; skipping root publication",
+  );
+  const githubPublished = githubRepo
+    ? await pushSandboxToGithub(sandbox)
+    : null;
 
   return { githubRepo: githubRepo ?? undefined, githubPublished };
 }
