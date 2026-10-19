@@ -1,4 +1,4 @@
-import "./setupPublication.fixture";
+import "../../testing/setupPublication.fixture";
 import { afterEach, expect, it, vi } from "vitest";
 import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
