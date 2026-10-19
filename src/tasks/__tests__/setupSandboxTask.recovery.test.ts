@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { mockStop } from "./setupSandboxTask.fixture";
+import { mockStop } from "../../testing/setupSandboxTask.fixture";
 import { setupSandboxTask } from "../setupSandboxTask";
 import { provisionSandbox } from "../../sandboxes/provisionSandbox";
 import { logStep } from "../../sandboxes/logStep";

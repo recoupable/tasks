@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { mockStop } from "./setupSandboxTask.fixture";
+import { mockStop } from "../../testing/setupSandboxTask.fixture";
 const { setupSandboxTask } = await import("../setupSandboxTask");
 const { getOrCreateSandbox } = await import(
   "../../sandboxes/getOrCreateSandbox"
