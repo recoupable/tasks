@@ -18,7 +18,7 @@ Per-target results are `confirmed`, `conflict`, `unconfirmed` or `denied`, with 
 
 Any binding issue or non-confirmed target returns failed publication to the existing `setup-sandbox` recovery flow. It attempts snapshot-and-persist before reporting the snapshot ID and shutting down. If snapshot persistence cannot be confirmed, existing recovery withholds explicit shutdown; this does not guarantee that the provider has kept the sandbox active. No permanent recovery promise is added.
 
-Root preparation receives only confirmed organization receipts. It installs their exact commits as gitlinks and their canonical URLs as module URLs. Unbound existing module paths or stale root gitlinks reject preparation. No filesystem discovery can grant another organization publication. Subsequent root `git add -A` retains the confirmed links.
+Root preparation receives only confirmed organization receipts. It installs their exact commits as gitlinks and their canonical URLs as module URLs. Unbound existing module paths or stale root gitlinks reject preparation. No filesystem discovery can grant another organization publication. Ordinary files are staged first; acknowledged gitlinks are pinned afterwards, with only `.gitmodules` staged separately. This prevents a populated submodule’s unpublished HEAD from replacing the acknowledged commit. The checkout is never reset.
 
 ## Production effect and limits
 

@@ -34,9 +34,6 @@ export async function prepareSandboxRootPublication(
   // Copy .openclaw (skip orgs/) into repo
   await copyOpenClawToRepo(sandbox);
 
-  // Register org repos as submodules (deterministic)
-  if (!(await registerPublishedOrgs(sandbox, organizations))) return false;
-
   // Strip auth tokens from .gitmodules
   await stripGitmodulesTokens(sandbox);
 
@@ -44,6 +41,9 @@ export async function prepareSandboxRootPublication(
   if (!(await runGitCommand(sandbox, ["add", "-A"], "stage files"))) {
     return false;
   }
+
+  // A broad add reads populated submodule HEADs. Pin acknowledged commits afterwards.
+  if (!(await registerPublishedOrgs(sandbox, organizations))) return false;
 
   // Check if there are changes to commit
   const diffResult = await sandbox.runCommand({

@@ -77,5 +77,7 @@ export async function registerPublishedOrgs(
     ])
       if ((await git(args)).exitCode !== 0) return false;
   }
+  if (paths.size && (await git(["add", "--", ".gitmodules"])).exitCode !== 0)
+    return false;
   return true;
 }
