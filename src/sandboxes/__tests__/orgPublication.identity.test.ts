@@ -30,3 +30,26 @@ it("denies a plan retargeted to a different account", async () => {
   plan.accountId = "another-account";
   expect((await pushOrgRepos(f.sandbox, plan)).results[0].state).toBe("denied");
 });
+
+it("retains unavailable workspace scans as unconfirmed without committing", async () => {
+  const plan = await ensureOrgRepos(f.sandbox, "account");
+  const original = f.runCommand.getMockImplementation()!;
+  f.runCommand.mockImplementation(async (command) =>
+    command.cmd === "find"
+      ? {
+          exitCode: 1,
+          stdout: async () => "",
+          stderr: async () => "synthetic scan failed",
+        }
+      : original(command),
+  );
+  const batch = await pushOrgRepos(f.sandbox, plan);
+  expect(batch.ready).toBe(false);
+  expect(batch.results[0].state).toBe("unconfirmed");
+  expect(
+    f.commands.some(
+      (command) =>
+        command.args.includes("commit") || command.args.includes("push"),
+    ),
+  ).toBe(false);
+});

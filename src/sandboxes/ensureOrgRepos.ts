@@ -65,8 +65,14 @@ export async function ensureOrgRepos(
     )
       throw new Error("Indirect organization workspace");
     plan.workspaceRoot = root;
-    if (!(await validateOrgWorkspaceEntries(sandbox, root, aliases))) {
-      plan.issues.push({ reason: "unbound_workspace_entry" });
+    const workspace = await validateOrgWorkspaceEntries(sandbox, root, aliases);
+    if (workspace !== "valid") {
+      plan.issues.push({
+        reason:
+          workspace === "unbound"
+            ? "unbound_workspace_entry"
+            : "workspace_scan_unconfirmed",
+      });
       return plan;
     }
     for (const org of orgs) {

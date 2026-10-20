@@ -34,3 +34,23 @@ it("rejects unbound root gitlinks before staging can delete them", async () => {
     ),
   ).toBe(false);
 }, 30_000);
+it.each(["name with spaces", "name\twith\ttabs", 'name "quoted"'])(
+  "rejects unbound module paths in a complex subsection name: %s",
+  async (name) => {
+    f = publicationFixture();
+    const original = f.git(f.worker, "rev-parse", "HEAD");
+    f.git(
+      f.worker,
+      "config",
+      "-f",
+      ".gitmodules",
+      `submodule.${name}.path`,
+      ".openclaw/workspace/orgs/unbound",
+    );
+    expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
+    expect(f.git(f.root, "--git-dir", f.remote, "rev-parse", "main")).toBe(
+      original,
+    );
+  },
+  30_000,
+);

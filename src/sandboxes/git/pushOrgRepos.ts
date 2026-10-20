@@ -30,21 +30,24 @@ export async function pushOrgRepos(
       batch.issues.push({ reason: "membership_unavailable" });
       return batch;
     }
-    if (
-      !(await validateOrgWorkspaceEntries(
-        sandbox,
-        plan.workspaceRoot,
-        plan.targets.map((t) => t.alias),
-      ))
-    ) {
-      batch.results = plan.targets.map((target) => ({
-        target,
-        state: "denied",
-      }));
-      logger.error("Organization workspace binding denied", {
+    const workspace = await validateOrgWorkspaceEntries(
+      sandbox,
+      plan.workspaceRoot,
+      plan.targets.map((target) => target.alias),
+    );
+    if (workspace !== "valid") {
+      const state = workspace === "unbound" ? "denied" : "unconfirmed";
+      batch.results = plan.targets.map((target) => ({ target, state }));
+      logger.error("Organization workspace binding stopped", {
         accountId: plan.accountId,
+        state,
       });
-      batch.issues.push({ reason: "unbound_workspace_entry" });
+      batch.issues.push({
+        reason:
+          workspace === "unbound"
+            ? "unbound_workspace_entry"
+            : "workspace_scan_unconfirmed",
+      });
       return batch;
     }
     for (const target of plan.targets) {
