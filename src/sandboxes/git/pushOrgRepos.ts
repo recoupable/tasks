@@ -80,8 +80,12 @@ export async function pushOrgRepos(
   } catch {
     logger.error("Organization publication unconfirmed", {
       accountId: plan.accountId,
-      stage: "membership_or_workspace",
+      stage: "batch",
     });
+    for (const target of plan.targets) {
+      if (!batch.results.some((result) => result.target === target))
+        batch.results.push({ target, state: "unconfirmed" });
+    }
     batch.issues.push({ reason: "organization_publication_unconfirmed" });
   }
   return batch;

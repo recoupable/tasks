@@ -5,11 +5,17 @@ import { posix } from "node:path";
 export async function validateOrgModulePaths(
   sandbox: Sandbox,
   paths: ReadonlySet<string>,
+  blob?: string,
 ): Promise<boolean> {
   const git = async (args: string[]) =>
     sandbox.runCommand({
       cmd: "git",
-      args: ["config", "--null", "-f", ".gitmodules", ...args],
+      args: [
+        "config",
+        "--null",
+        ...(blob ? ["--blob", blob] : ["-f", ".gitmodules"]),
+        ...args,
+      ],
     });
   const names = await git([
     "--name-only",

@@ -1,5 +1,6 @@
 import type { Sandbox } from "@vercel/sandbox";
 import type { OrgPublicationResult } from "./org/types";
+import { validateCommittedOrgBindings } from "./validateCommittedOrgBindings";
 import { validateOrgModulePaths } from "./validateOrgModulePaths";
 import { getOrgRootBindings } from "./getOrgRootBindings";
 
@@ -10,6 +11,8 @@ export async function validateOrgRootBindings(
 ): Promise<boolean> {
   const paths = getOrgRootBindings(results);
   if (!paths) return false;
+  if (!(await validateCommittedOrgBindings(sandbox, new Set(paths.keys()))))
+    return false;
   const prefix = ".openclaw/workspace/orgs/";
   const git = async (args: string[]) =>
     sandbox.runCommand({ cmd: "git", args });

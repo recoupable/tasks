@@ -72,6 +72,10 @@ it.each([false, true])(
       "main:.gitmodules",
     );
     expect(modules).toContain(f.repository.url);
+    // The next publication also validates the committed module blob and gitlink.
+    expect(await pushSandboxToGithub(f.sandbox, batch.results)).toBe(true);
+    if (populated)
+      expect(f.git(populatedPath, "rev-parse", "HEAD")).toBe(unpublished);
   },
   30_000,
 );

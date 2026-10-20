@@ -54,3 +54,32 @@ it.each(["name with spaces", "name\twith\ttabs", 'name "quoted"'])(
   },
   30_000,
 );
+it("rejects committed unbound gitlinks already staged for deletion", async () => {
+  f = publicationFixture();
+  const original = f.git(f.root, "--git-dir", f.remote, "rev-parse", "main");
+  f.git(
+    f.worker,
+    "update-index",
+    "--add",
+    "--cacheinfo",
+    `160000,${original},.openclaw/workspace/orgs/unbound`,
+  );
+  f.git(f.worker, "commit", "-m", "existing unbound binding");
+  const head = f.git(f.worker, "rev-parse", "HEAD");
+  f.git(
+    f.worker,
+    "rm",
+    "--cached",
+    "--force",
+    "--",
+    ".openclaw/workspace/orgs/unbound",
+  );
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
+  expect(f.git(f.root, "--git-dir", f.remote, "rev-parse", "main")).toBe(
+    original,
+  );
+  expect(f.git(f.worker, "rev-parse", "HEAD")).toBe(head);
+  expect(f.git(f.worker, "diff", "--cached", "--name-status")).toContain(
+    "D\t.openclaw/workspace/orgs/unbound",
+  );
+}, 30_000);

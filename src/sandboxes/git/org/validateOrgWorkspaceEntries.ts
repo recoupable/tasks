@@ -7,6 +7,18 @@ export async function validateOrgWorkspaceEntries(
   aliases: string[],
 ): Promise<"valid" | "unbound" | "unconfirmed"> {
   try {
+    const physical = await sandbox.runCommand({
+      cmd: "realpath",
+      args: ["-e", "--", root],
+    });
+    if (physical.exitCode !== 0) return "unconfirmed";
+    if ((await physical.stdout()).trim() !== root) return "unbound";
+    const rootDirectory = await sandbox.runCommand({
+      cmd: "test",
+      args: ["-d", root],
+    });
+    if (rootDirectory.exitCode === 1) return "unbound";
+    if (rootDirectory.exitCode !== 0) return "unconfirmed";
     const listed = await sandbox.runCommand({
       cmd: "find",
       args: [root, "-mindepth", "1", "-maxdepth", "1", "-print0"],
