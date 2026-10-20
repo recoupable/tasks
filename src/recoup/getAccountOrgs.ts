@@ -3,7 +3,7 @@ import { z } from "zod";
 import { NEW_API_BASE_URL, RECOUP_API_KEY } from "../consts";
 
 const orgSchema = z.object({
-  organization_id: z.string(),
+  organization_id: z.string().min(1),
   organization_name: z.string().nullable(),
 });
 
@@ -24,7 +24,7 @@ export interface OrgInfo {
  * @returns Array of org id/name pairs, or undefined on error
  */
 export async function getAccountOrgs(
-  accountId: string
+  accountId: string,
 ): Promise<OrgInfo[] | undefined> {
   const url = `${NEW_API_BASE_URL}/api/organizations?account_id=${encodeURIComponent(accountId)}`;
 
@@ -58,12 +58,10 @@ export async function getAccountOrgs(
       return undefined;
     }
 
-    const orgs = validation.data.organizations
-      .filter((org) => org.organization_id && org.organization_name)
-      .map((org) => ({
-        organizationId: org.organization_id,
-        organizationName: org.organization_name!,
-      }));
+    const orgs = validation.data.organizations.map((org) => ({
+      organizationId: org.organization_id,
+      organizationName: org.organization_name ?? "",
+    }));
 
     logger.log("Account organizations fetched", {
       accountId,

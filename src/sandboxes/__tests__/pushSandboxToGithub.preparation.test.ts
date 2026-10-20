@@ -19,7 +19,7 @@ it("returns unconfirmed publication when staged diff throws, preserving local wo
       throw new Error("Synthetic SDK transport failure");
     return original(call);
   });
-  await expect(pushSandboxToGithub(f.sandbox)).resolves.toBe(false);
+  await expect(pushSandboxToGithub(f.sandbox, [])).resolves.toBe(false);
   expect(readFileSync(join(f.worker, "draft.txt"), "utf8")).toBe(
     "worker replacement\n",
   );

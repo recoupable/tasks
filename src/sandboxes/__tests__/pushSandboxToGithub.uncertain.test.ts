@@ -17,7 +17,7 @@ it("keeps the local commit and never retries after a lost push acknowledgment", 
     f.git(f.worker, "push", "origin", "HEAD:main");
     throw new Error("Synthetic reply lost after remote accepted commit");
   });
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(false);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
   expect(f.git(f.remote, "rev-parse", "main")).toBe(
     f.git(f.worker, "rev-parse", "HEAD"),
   );
@@ -35,7 +35,7 @@ it("does not relax the original lease after a background tracking-ref fetch", as
     newer = f.advancePeer();
     f.git(f.worker, "fetch", "origin");
   });
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(false);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
   expect(f.git(f.remote, "rev-parse", "main")).toBe(newer);
   expect(f.git(f.worker, "rev-parse", "origin/main")).toBe(newer);
   expect(
@@ -52,7 +52,7 @@ it("publishes the validated commit even if another local process moves HEAD", as
     validated = f.git(f.worker, "rev-parse", "HEAD");
     f.git(f.worker, "reset", "--hard", original);
   });
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(true);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(true);
   expect(f.git(f.remote, "rev-parse", "main")).toBe(validated);
   expect(f.git(f.remote, "show", "main:draft.txt")).toBe("worker replacement");
 });

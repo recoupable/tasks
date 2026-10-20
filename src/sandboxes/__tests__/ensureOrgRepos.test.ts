@@ -1,213 +1,87 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-vi.mock("@trigger.dev/sdk/v3", () => ({
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { rmSync, symlinkSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { orgPublicationFixture } from "./orgPublication.fixture";
+import { ensureOrgRepos } from "../ensureOrgRepos";
+import { getAccountOrgs } from "../../recoup/getAccountOrgs";
+import { createOrgGithubRepo } from "../../github/createOrgGithubRepo";
+import { readOrgRepositoryAuthority } from "../../github/readOrgRepositoryAuthority";
+import { getSandboxHomeDir } from "../getSandboxHomeDir";
+vi.mock("../../recoup/getAccountOrgs");
+vi.mock("../../github/createOrgGithubRepo");
+vi.mock("../../github/readOrgRepositoryAuthority");
+vi.mock("../getSandboxHomeDir");
+vi.mock("@trigger.dev/sdk", () => ({
   logger: { log: vi.fn(), error: vi.fn() },
-  metadata: { set: vi.fn(), append: vi.fn() },
 }));
-
-const mockGetAccountOrgs = vi.fn();
-vi.mock("../../recoup/getAccountOrgs", () => ({
-  getAccountOrgs: (...args: unknown[]) => mockGetAccountOrgs(...args),
-}));
-
-const mockCreateOrgGithubRepo = vi.fn();
-vi.mock("../../github/createOrgGithubRepo", () => ({
-  createOrgGithubRepo: (...args: unknown[]) =>
-    mockCreateOrgGithubRepo(...args),
-}));
-
-const { ensureOrgRepos } = await import("../ensureOrgRepos");
-
-function createMockSandbox() {
-  const runCommand = vi.fn().mockImplementation((opts: any) => {
-    const finished = {
-      exitCode: 0,
-      stdout: async () => "",
-      stderr: async () => "",
-    };
-    if (opts?.cmd === "openclaw") {
-      return Promise.resolve({ wait: vi.fn().mockResolvedValue(finished) });
-    }
-    return Promise.resolve(finished);
-  });
-
-  return { runCommand } as any;
-}
-
+let f: ReturnType<typeof orgPublicationFixture>;
 beforeEach(() => {
+  vi.stubEnv("GITHUB_TOKEN", "synthetic-unused");
+  f = orgPublicationFixture();
+  vi.mocked(getSandboxHomeDir).mockResolvedValue(f.home);
+  vi.mocked(createOrgGithubRepo).mockResolvedValue(f.repository.url);
+  vi.mocked(readOrgRepositoryAuthority).mockResolvedValue(f.repository);
+  vi.mocked(getAccountOrgs).mockResolvedValue([
+    { organizationId: f.organizationId, organizationName: "Team" },
+  ]);
+});
+afterEach(() => {
+  rmSync(f.root, { recursive: true, force: true });
   vi.clearAllMocks();
-  process.env.GITHUB_TOKEN = "test-token";
+  vi.unstubAllEnvs();
+});
+it("rejects colliding display names before repository creation", async () => {
+  vi.mocked(getAccountOrgs).mockResolvedValue([
+    { organizationId: f.organizationId, organizationName: "Team A" },
+    {
+      organizationId: "22222222-2222-4222-8222-222222222222",
+      organizationName: "Team / A",
+    },
+  ]);
+  const plan = await ensureOrgRepos(f.sandbox, "account");
+  expect(plan.issues[0].reason).toBe("ambiguous_organization_binding");
+  expect(createOrgGithubRepo).not.toHaveBeenCalled();
+  expect(f.commands).toEqual([]);
+});
+it("distinguishes unavailable membership from a known empty roster", async () => {
+  vi.mocked(getAccountOrgs).mockResolvedValueOnce(undefined);
+  expect((await ensureOrgRepos(f.sandbox, "account")).issues[0].reason).toBe(
+    "membership_unavailable",
+  );
+  rmSync(f.workspace, { recursive: true });
+  vi.mocked(getAccountOrgs).mockResolvedValueOnce([]);
+  expect((await ensureOrgRepos(f.sandbox, "account")).issues).toEqual([]);
+});
+it("keeps unknown directories and refuses to infer access from them", async () => {
+  mkdirSync(join(f.orgRoot, "unregistered"));
+  expect((await ensureOrgRepos(f.sandbox, "account")).issues[0].reason).toBe(
+    "unbound_workspace_entry",
+  );
+  expect(createOrgGithubRepo).not.toHaveBeenCalled();
+});
+it("rejects indirect workspace paths", async () => {
+  rmSync(f.workspace, { recursive: true });
+  symlinkSync(f.worker, f.workspace);
+  expect((await ensureOrgRepos(f.sandbox, "account")).targets).toEqual([]);
+});
+it("retains unavailable provider authority as an issue", async () => {
+  vi.mocked(readOrgRepositoryAuthority).mockResolvedValueOnce(undefined);
+  const plan = await ensureOrgRepos(f.sandbox, "account");
+  expect(plan.targets).toEqual([]);
+  expect(plan.issues).toEqual([
+    {
+      organizationId: f.organizationId,
+      reason: "repository_authority_unavailable",
+    },
+  ]);
 });
 
-describe("ensureOrgRepos", () => {
-  it("skips when no GITHUB_TOKEN", async () => {
-    delete process.env.GITHUB_TOKEN;
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    expect(mockGetAccountOrgs).not.toHaveBeenCalled();
-  });
-
-  it("skips when no orgs returned", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce([]);
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    expect(mockCreateOrgGithubRepo).not.toHaveBeenCalled();
-  });
-
-  it("skips when getAccountOrgs returns undefined", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce(undefined);
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    expect(mockCreateOrgGithubRepo).not.toHaveBeenCalled();
-  });
-
-  it("creates GitHub repos for each org", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce([
-      { organizationId: "org-1", organizationName: "Org One" },
-      { organizationId: "org-2", organizationName: "Org Two" },
-    ]);
-
-    mockCreateOrgGithubRepo
-      .mockResolvedValueOnce("https://github.com/recoupable/org-org-one-org-1")
-      .mockResolvedValueOnce("https://github.com/recoupable/org-org-two-org-2");
-
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    expect(mockCreateOrgGithubRepo).toHaveBeenCalledWith("Org One", "org-1");
-    expect(mockCreateOrgGithubRepo).toHaveBeenCalledWith("Org Two", "org-2");
-  });
-
-  it("runs an openclaw command to clone org repos into workspace", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce([
-      { organizationId: "org-1", organizationName: "Test Org" },
-    ]);
-
-    mockCreateOrgGithubRepo.mockResolvedValueOnce(
-      "https://github.com/recoupable/org-test-org-org-1"
-    );
-
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    // Should have called openclaw agent with a message about cloning
-    const openclawCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) => call[0]?.cmd === "openclaw"
-    );
-    expect(openclawCall).toBeDefined();
-
-    // The openclaw args should include the repo URL
-    const args = openclawCall![0].args;
-    const message = args.find(
-      (a: string, i: number) => args[i - 1] === "--message"
-    );
-    expect(message).toContain("org-test-org-org-1");
-
-    // GITHUB_TOKEN is injected into openclaw.json by setupOpenClaw,
-    // not passed via env on this runCommand call.
-    expect(openclawCall![0].env).toBeUndefined();
-  });
-
-  // Should NOT use git submodule add — that's the old approach
-  it("does not use git submodule add", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce([
-      { organizationId: "org-1", organizationName: "Test Org" },
-    ]);
-
-    mockCreateOrgGithubRepo.mockResolvedValueOnce(
-      "https://github.com/recoupable/org-test-org-org-1"
-    );
-
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    const submoduleCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) =>
-        call[0]?.cmd === "git" &&
-        call[0]?.args?.[0] === "submodule"
-    );
-    expect(submoduleCall).toBeUndefined();
-  });
-
-  it("continues creating repos when one fails", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce([
-      { organizationId: "org-1", organizationName: "Failing Org" },
-      { organizationId: "org-2", organizationName: "Working Org" },
-    ]);
-
-    mockCreateOrgGithubRepo
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(
-        "https://github.com/recoupable/org-working-org-org-2"
-      );
-
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    expect(mockCreateOrgGithubRepo).toHaveBeenCalledTimes(2);
-
-    // Openclaw should still be called with the one that succeeded
-    const openclawCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) => call[0]?.cmd === "openclaw"
-    );
-    expect(openclawCall).toBeDefined();
-  });
-
-  /**
-   * Regression: submodules use a .git FILE (gitlink), not a .git DIRECTORY.
-   * If the clone prompt only checks for a .git directory, it treats
-   * submodule dirs as "not a git repo", removes them, and clones fresh —
-   * destroying the submodule registration every re-run.
-   */
-  it("instructs OpenClaw to detect .git files (gitlinks) for submodules", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce([
-      { organizationId: "org-1", organizationName: "Test Org" },
-    ]);
-
-    mockCreateOrgGithubRepo.mockResolvedValueOnce(
-      "https://github.com/recoupable/org-test-org-org-1"
-    );
-
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    const openclawCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) => call[0]?.cmd === "openclaw"
-    );
-    const args = openclawCall![0].args;
-    const message = args.find(
-      (a: string, i: number) => args[i - 1] === "--message"
-    );
-
-    // Message must handle .git as a file (submodule gitlink), not just directory
-    expect(message).toContain(".git file");
-  });
-
-  it("skips openclaw when all repo creations fail", async () => {
-    mockGetAccountOrgs.mockResolvedValueOnce([
-      { organizationId: "org-1", organizationName: "Failing Org" },
-    ]);
-
-    mockCreateOrgGithubRepo.mockResolvedValueOnce(undefined);
-
-    const sandbox = createMockSandbox();
-
-    await ensureOrgRepos(sandbox, "account-1");
-
-    const openclawCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) => call[0]?.cmd === "openclaw"
-    );
-    expect(openclawCall).toBeUndefined();
-  });
+it("rejects whitespace-only organization names before creating repositories", async () => {
+  vi.mocked(getAccountOrgs).mockResolvedValueOnce([
+    { organizationId: f.organizationId, organizationName: "   " },
+  ]);
+  expect((await ensureOrgRepos(f.sandbox, "account")).issues[0].reason).toBe(
+    "ambiguous_organization_binding",
+  );
+  expect(createOrgGithubRepo).not.toHaveBeenCalled();
 });

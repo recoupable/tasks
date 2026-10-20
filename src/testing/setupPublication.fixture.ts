@@ -8,7 +8,14 @@ vi.mock("../sandboxes/ensureGithubRepo", () => ({
   ensureGithubRepo: vi.fn(async () => "https://github.com/example/synthetic"),
 }));
 vi.mock("../sandboxes/writeReadme", () => ({ writeReadme: vi.fn() }));
-vi.mock("../sandboxes/ensureOrgRepos", () => ({ ensureOrgRepos: vi.fn() }));
+vi.mock("../sandboxes/ensureOrgRepos", () => ({
+  ensureOrgRepos: vi.fn().mockResolvedValue({
+    accountId: "synthetic",
+    workspaceRoot: "/synthetic",
+    targets: [],
+    issues: [],
+  }),
+}));
 vi.mock("../sandboxes/ensureSetupSandbox", () => ({
   ensureSetupSandbox: vi.fn(),
 }));

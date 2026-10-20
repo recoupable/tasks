@@ -14,7 +14,7 @@ afterEach(() =>
 it("creates main only when its observed absence remains true", async () => {
   const f = publicationFixture(true);
   roots.push(f.root);
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(true);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(true);
   expect(f.git(f.remote, "show", "main:draft.txt")).toBe("worker replacement");
   expect(
     f.runCommand.mock.calls.find(([call]) => call.args[0] === "push")?.[0].args,
@@ -28,7 +28,7 @@ it("does not replace main created after the missing-branch observation", async (
   f.race(() => {
     newer = f.advancePeer();
   });
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(false);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
   expect(f.git(f.remote, "rev-parse", "main")).toBe(newer);
   expect(f.git(f.worker, "show", "HEAD:draft.txt")).toBe("worker replacement");
 });
@@ -37,7 +37,7 @@ it("never treats a remote read failure as a missing branch", async () => {
   const f = publicationFixture();
   roots.push(f.root);
   f.git(f.worker, "remote", "set-url", "origin", join(f.root, "missing.git"));
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(false);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
   expect(
     f.runCommand.mock.calls.some(([call]) => call.args[0] === "push"),
   ).toBe(false);
@@ -57,7 +57,7 @@ it("publishes an existing local commit without making a second commit", async ()
   f.git(f.worker, "add", ".");
   f.git(f.worker, "commit", "-m", "local work");
   const head = f.git(f.worker, "rev-parse", "HEAD");
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(true);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(true);
   expect(f.git(f.worker, "rev-parse", "HEAD")).toBe(head);
   expect(f.git(f.remote, "rev-parse", "main")).toBe(head);
 });

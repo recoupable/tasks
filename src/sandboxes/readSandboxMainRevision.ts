@@ -1,9 +1,9 @@
-import type { Sandbox } from "@vercel/sandbox";
+import type { GitCommandRunner } from "./GitCommandRunner";
 import { logSandboxGitFailure } from "./logSandboxGitFailure";
 
 /** null means observation failed; { sha: null } means main was absent. */
 export async function readSandboxMainRevision(
-  sandbox: Sandbox,
+  sandbox: GitCommandRunner,
 ): Promise<{ sha: string | null } | null> {
   try {
     const result = await sandbox.runCommand({

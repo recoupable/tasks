@@ -6,11 +6,14 @@ import { writeReadme } from "./writeReadme";
 import { ensureOrgRepos } from "./ensureOrgRepos";
 import { ensureSetupSandbox } from "./ensureSetupSandbox";
 import { pushSandboxToGithub } from "./pushSandboxToGithub";
+import { pushOrgRepos } from "./git/pushOrgRepos";
+import type { OrgPublicationBatch } from "./git/org/types";
 import { logStep } from "./logStep";
 
 interface ProvisionSandboxResult {
   githubRepo: string | undefined;
   githubPublished: boolean | null;
+  organizations?: OrgPublicationBatch;
 }
 
 /**
@@ -27,6 +30,19 @@ export async function provisionSandbox(
   sandboxId: string,
   accountId: string,
 ): Promise<ProvisionSandboxResult> {
+  const plan = await ensureOrgRepos(sandbox, accountId);
+  if (plan.issues.length) {
+    logStep(
+      "Organization publication binding unavailable; preserving recovery",
+      false,
+      { issues: plan.issues },
+    );
+    return {
+      githubRepo: undefined,
+      githubPublished: false,
+      organizations: { ready: false, results: [], issues: plan.issues },
+    };
+  }
   await installOpenClaw(sandbox);
   await setupOpenClaw(sandbox, accountId);
   logStep("OpenClaw onboard complete, starting gateway");
@@ -36,8 +52,6 @@ export async function provisionSandbox(
 
   await writeReadme(sandbox, sandboxId, accountId, githubRepo ?? undefined);
   logStep("README written", false);
-
-  await ensureOrgRepos(sandbox, accountId);
 
   try {
     await ensureSetupSandbox(sandbox, accountId);
@@ -52,9 +66,20 @@ export async function provisionSandbox(
       ? "Pushing to GitHub"
       : "No root repository configured; skipping root publication",
   );
+  const organizations = await pushOrgRepos(sandbox, plan);
+  if (!organizations.ready)
+    return {
+      githubRepo: githubRepo ?? undefined,
+      githubPublished: false,
+      organizations,
+    };
   const githubPublished = githubRepo
-    ? await pushSandboxToGithub(sandbox)
+    ? await pushSandboxToGithub(sandbox, organizations.results)
     : null;
 
-  return { githubRepo: githubRepo ?? undefined, githubPublished };
+  return {
+    githubRepo: githubRepo ?? undefined,
+    githubPublished,
+    organizations,
+  };
 }

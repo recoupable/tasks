@@ -8,9 +8,17 @@ vi.mock("../git/addOrgSubmodules", () => ({ addOrgSubmodules: vi.fn() }));
 vi.mock("../git/stripGitmodulesTokens", () => ({
   stripGitmodulesTokens: vi.fn(),
 }));
-vi.mock("../git/pushOrgRepos", () => ({ pushOrgRepos: vi.fn() }));
+vi.mock("../git/pushOrgRepos", () => ({
+  pushOrgRepos: vi
+    .fn()
+    .mockResolvedValue({ ready: true, results: [], issues: [] }),
+}));
 
 vi.mock("@trigger.dev/sdk", () => ({
   logger: { log: vi.fn(), error: vi.fn() },
   schemaTask: vi.fn((config) => config),
+}));
+
+vi.mock("../git/registerPublishedOrgs", () => ({
+  registerPublishedOrgs: vi.fn().mockResolvedValue(true),
 }));

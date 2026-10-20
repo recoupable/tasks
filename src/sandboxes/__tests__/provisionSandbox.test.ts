@@ -32,7 +32,7 @@ describe("provisionSandbox", () => {
     );
     expect(ensureOrgRepos).toHaveBeenCalledWith(mockSandbox, "acc_456");
     expect(ensureSetupSandbox).toHaveBeenCalledWith(mockSandbox, "acc_456");
-    expect(pushSandboxToGithub).toHaveBeenCalledWith(mockSandbox);
+    expect(pushSandboxToGithub).toHaveBeenCalledWith(mockSandbox, []);
   });
 
   it("returns the github repo URL", async () => {
@@ -52,7 +52,7 @@ describe("provisionSandbox", () => {
     );
     const result = await provisionSandbox(mockSandbox, "sbx_123", "acc_456");
 
-    expect(pushSandboxToGithub).toHaveBeenCalledWith(mockSandbox);
+    expect(pushSandboxToGithub).toHaveBeenCalledWith(mockSandbox, []);
     expect(result.githubRepo).toBe("https://github.com/org/repo");
   });
   it("propagates unconfirmed publication to the setup caller", async () => {

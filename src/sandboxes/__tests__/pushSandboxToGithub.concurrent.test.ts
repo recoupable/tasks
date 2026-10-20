@@ -14,7 +14,7 @@ it("publishes normally with an explicit observed revision", async () => {
   const f = publicationFixture();
   roots.push(f.root);
   const original = f.git(f.remote, "rev-parse", "refs/heads/main");
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(true);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(true);
   expect(f.git(f.remote, "rev-parse", "refs/heads/main")).toBe(
     f.git(f.worker, "rev-parse", "HEAD"),
   );
@@ -34,7 +34,7 @@ it("preserves the newer remote and local commit when another writer wins", async
   f.race(() => {
     newer = f.advancePeer();
   });
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(false);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
   expect(f.git(f.remote, "rev-parse", "refs/heads/main")).toBe(newer);
   expect(f.git(f.worker, "show", "HEAD:draft.txt")).toBe("worker replacement");
   expect(
@@ -51,7 +51,7 @@ it("rejects an already stale sandbox even if its remote observation is fresh", a
   const f = publicationFixture();
   roots.push(f.root);
   const newer = f.advancePeer();
-  expect(await pushSandboxToGithub(f.sandbox)).toBe(false);
+  expect(await pushSandboxToGithub(f.sandbox, [])).toBe(false);
   expect(f.git(f.remote, "rev-parse", "refs/heads/main")).toBe(newer);
   expect(
     f.runCommand.mock.calls.some(([call]) => call.args[0] === "push"),
