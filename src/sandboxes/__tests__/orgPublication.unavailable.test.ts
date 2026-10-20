@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, renameSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { orgPublicationFixture } from "./orgPublication.fixture";
 import { configureOrgAuthority } from "./orgAuthorityMocks";
+import { createOrgGithubRepo } from "../../github/createOrgGithubRepo";
 import { getAccountOrgs } from "../../recoup/getAccountOrgs";
 import { ensureOrgRepos } from "../ensureOrgRepos";
 import { pushOrgRepos } from "../git/pushOrgRepos";
@@ -65,4 +66,21 @@ it("rejects a symlinked workspace root before scanning entries", async () => {
   expect(
     f.commands.slice(offset).some((command) => command.cmd === "find"),
   ).toBe(false);
+});
+
+it("retains a failed planner workspace scan as unconfirmed", async () => {
+  const original = f.runCommand.getMockImplementation()!;
+  f.runCommand.mockImplementation(async (command) =>
+    command.cmd === "find"
+      ? {
+          exitCode: 1,
+          stdout: async () => "",
+          stderr: async () => "synthetic enumeration failed",
+        }
+      : original(command),
+  );
+  const plan = await ensureOrgRepos(f.sandbox, "account");
+  expect(plan.issues).toEqual([{ reason: "workspace_scan_unconfirmed" }]);
+  expect(plan.targets).toEqual([]);
+  expect(createOrgGithubRepo).not.toHaveBeenCalled();
 });

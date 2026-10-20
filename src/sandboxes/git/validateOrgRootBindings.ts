@@ -13,7 +13,7 @@ export async function validateOrgRootBindings(
   if (!paths) return false;
   if (!(await validateCommittedOrgBindings(sandbox, new Set(paths.keys()))))
     return false;
-  const prefix = ".openclaw/workspace/orgs/";
+  const prefix = ".openclaw/workspace/orgs";
   const git = async (args: string[]) =>
     sandbox.runCommand({ cmd: "git", args });
   if (!(await validateOrgModulePaths(sandbox, new Set(paths.keys()))))

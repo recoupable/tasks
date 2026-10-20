@@ -31,11 +31,11 @@ export async function validateOrgModulePaths(
     if (values.pop() !== "") return false;
     for (const path of values) {
       if (!path) return false;
-      const prefix = ".openclaw/workspace/orgs/";
-      if (
-        (path.startsWith(prefix) || posix.normalize(path).startsWith(prefix)) &&
-        (!paths.has(path) || key !== `submodule.${path}.path`)
-      )
+      const namespace = ".openclaw/workspace/orgs";
+      const scoped = [path, posix.normalize(path)].some(
+        (value) => value === namespace || value.startsWith(`${namespace}/`),
+      );
+      if (scoped && (!paths.has(path) || key !== `submodule.${path}.path`))
         return false;
     }
   }

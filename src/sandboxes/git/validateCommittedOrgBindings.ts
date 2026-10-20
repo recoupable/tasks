@@ -18,7 +18,7 @@ export async function validateCommittedOrgBindings(
     "-z",
     head.sha,
     "--",
-    ".openclaw/workspace/orgs/",
+    ".openclaw/workspace/orgs",
   ]);
   if (links.exitCode !== 0) return false;
   for (const entry of (await links.stdout()).split("\0").filter(Boolean)) {
