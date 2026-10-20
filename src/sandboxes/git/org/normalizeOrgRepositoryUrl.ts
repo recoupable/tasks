@@ -10,7 +10,7 @@ export function normalizeOrgRepositoryUrl(value: string): string | null {
       url.hash
     )
       return null;
-    const path = url.pathname.replace(/\.git$/, "").replace(/\/$/, "");
+    const path = url.pathname.replace(/\/$/, "").replace(/\.git$/i, "");
     if (!/^\/recoupable\/[a-z0-9._-]+$/i.test(path)) return null;
     return `https://github.com${path.toLowerCase()}`;
   } catch {

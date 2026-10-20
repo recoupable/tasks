@@ -68,5 +68,20 @@ it("retains unavailable provider authority as an issue", async () => {
   vi.mocked(readOrgRepositoryAuthority).mockResolvedValueOnce(undefined);
   const plan = await ensureOrgRepos(f.sandbox, "account");
   expect(plan.targets).toEqual([]);
-  expect(plan.issues).toHaveLength(1);
+  expect(plan.issues).toEqual([
+    {
+      organizationId: f.organizationId,
+      reason: "repository_authority_unavailable",
+    },
+  ]);
+});
+
+it("rejects whitespace-only organization names before creating repositories", async () => {
+  vi.mocked(getAccountOrgs).mockResolvedValueOnce([
+    { organizationId: f.organizationId, organizationName: "   " },
+  ]);
+  expect((await ensureOrgRepos(f.sandbox, "account")).issues[0].reason).toBe(
+    "ambiguous_organization_binding",
+  );
+  expect(createOrgGithubRepo).not.toHaveBeenCalled();
 });

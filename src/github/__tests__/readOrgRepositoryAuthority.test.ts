@@ -18,11 +18,22 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 it("requires provider identity and explicit push permission", async () => {
-  expect(await readOrgRepositoryAuthority("org-synthetic")).toMatchObject({
+  expect(await readOrgRepositoryAuthority("org-synthetic")).toEqual({
     id: 123,
+    owner: "recoupable",
     name: "org-synthetic",
+    url: "https://github.com/recoupable/org-synthetic",
   });
-  expect(fetcher.mock.calls[0][1].redirect).toBe("error");
+  expect(fetcher).toHaveBeenCalledWith(
+    "https://api.github.com/repos/recoupable/org-synthetic",
+    expect.objectContaining({
+      redirect: "error",
+      signal: expect.any(AbortSignal),
+      headers: expect.objectContaining({
+        Authorization: "Bearer synthetic-unused",
+      }),
+    }),
+  );
 });
 it.each([
   { ...data, permissions: { push: false } },

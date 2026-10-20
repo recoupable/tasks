@@ -70,8 +70,10 @@ it("keeps a lost acknowledgment unconfirmed and never retries", async () => {
 it("never writes credentials to command arguments or Git config files", async () => {
   const plan = await ensureOrgRepos(f.sandbox, "account");
   expect((await pushOrgRepos(f.sandbox, plan)).ready).toBe(true);
-  expect(JSON.stringify(f.commands.map((c) => c.args))).not.toContain(
-    "synthetic-unused-token",
+  const argumentsText = JSON.stringify(f.commands.map((c) => c.args));
+  expect(argumentsText).not.toContain("synthetic-unused-token");
+  expect(argumentsText).not.toContain(
+    Buffer.from("x-access-token:synthetic-unused-token").toString("base64"),
   );
   expect(readFileSync(join(f.workspace, ".git/config"), "utf8")).not.toContain(
     "Authorization",
@@ -79,6 +81,8 @@ it("never writes credentials to command arguments or Git config files", async ()
   const local = f.commands.filter(
     (c) => c.args.includes("add") || c.args.includes("commit"),
   );
-  for (const command of local.filter((c) => c.args[0] === "-C"))
+  for (const command of local.filter((c) => c.args[0] === "-C")) {
     expect(command.env?.GIT_CONFIG_VALUE_0).toBe("");
+    expect(command.env?.GITHUB_TOKEN).toBe("");
+  }
 });

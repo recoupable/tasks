@@ -10,7 +10,7 @@ import { ensureOrgRepos } from "../ensureOrgRepos";
 import { pushOrgRepos } from "../git/pushOrgRepos";
 let f: ReturnType<typeof orgPublicationFixture>;
 afterEach(() => {
-  rmSync(f.root, { recursive: true, force: true });
+  if (f) rmSync(f.root, { recursive: true, force: true });
   vi.unstubAllEnvs();
   vi.resetAllMocks();
 });

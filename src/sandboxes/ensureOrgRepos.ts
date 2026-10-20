@@ -1,3 +1,5 @@
+import { logger } from "@trigger.dev/sdk";
+import { OrgBindingError } from "./git/org/OrgBindingError";
 import type { Sandbox } from "@vercel/sandbox";
 import { posix } from "node:path";
 import { z } from "zod";
@@ -19,6 +21,7 @@ export async function ensureOrgRepos(
     targets: [],
     issues: [],
   };
+  let stage = "membership";
   try {
     const orgs = await getAccountOrgs(accountId);
     if (!orgs) {
@@ -30,7 +33,7 @@ export async function ensureOrgRepos(
     for (const [index, org] of orgs.entries()) {
       if (
         !z.string().uuid().safeParse(org.organizationId).success ||
-        !org.organizationName ||
+        !org.organizationName.trim() ||
         ids.has(org.organizationId) ||
         aliases.filter((alias) => alias === aliases[index]).length !== 1
       ) {
@@ -42,6 +45,7 @@ export async function ensureOrgRepos(
       ids.add(org.organizationId);
     }
     if (plan.issues.length) return plan;
+    stage = "workspace_root";
     const home = await getSandboxHomeDir(sandbox);
     if (!home.startsWith("/") || /[\x00-\x1f:]/.test(home))
       throw new Error("Invalid workspace home");
@@ -72,11 +76,8 @@ export async function ensureOrgRepos(
         );
       } catch (error) {
         const reason =
-          error instanceof Error &&
-          /^(repository_setup_binding_unavailable|repository_authority_unavailable|remote_revision_unavailable|repository_clone_unavailable|workspace_presence_unavailable|local_base_unavailable|workspace_base_conflict)$/.test(
-            error.message,
-          )
-            ? error.message
+          error instanceof OrgBindingError
+            ? error.reason
             : "target_binding_unavailable";
         plan.issues.push({
           organizationId: org.organizationId,
@@ -85,6 +86,7 @@ export async function ensureOrgRepos(
       }
     }
   } catch {
+    logger.error("Organization setup unconfirmed", { accountId, stage });
     plan.issues.push({ reason: "organization_setup_unconfirmed" });
   }
   return plan;

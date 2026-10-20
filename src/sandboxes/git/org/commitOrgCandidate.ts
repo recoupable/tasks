@@ -1,13 +1,15 @@
 import type { Sandbox } from "@vercel/sandbox";
 import { orgGitEnvironment } from "./orgGitEnvironment";
 
-/** Local filters never receive the service credential in their command environment. */
+/** Do not inject transport credentials into local filters; legacy credential files are separate. */
 export async function commitOrgCandidate(
   sandbox: Sandbox,
   path: string,
 ): Promise<string | undefined> {
   const env = orgGitEnvironment();
   env.GIT_CONFIG_VALUE_0 = "";
+  env.GITHUB_TOKEN = "";
+  env.GH_TOKEN = "";
   const git = async (args: string[]) =>
     sandbox.runCommand({ cmd: "git", args: ["-C", path, ...args], env });
   if ((await git(["add", "-A"])).exitCode !== 0) return undefined;

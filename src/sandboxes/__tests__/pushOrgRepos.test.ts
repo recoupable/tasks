@@ -82,4 +82,11 @@ describe("bound organization publication", () => {
       "denied",
     );
   });
+  it("keeps unavailable provider authority unconfirmed", async () => {
+    const plan = await ensureOrgRepos(f.sandbox, "account");
+    vi.mocked(readOrgRepositoryAuthority).mockResolvedValueOnce(undefined);
+    expect((await pushOrgRepos(f.sandbox, plan)).results[0].state).toBe(
+      "unconfirmed",
+    );
+  });
 });

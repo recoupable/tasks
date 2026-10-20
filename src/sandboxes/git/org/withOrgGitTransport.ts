@@ -56,7 +56,12 @@ export async function withOrgGitTransport<T>(
     return await action(runner, directory);
   } finally {
     try {
-      await sandbox.runCommand({ cmd: "rm", args: ["-rf", "--", directory] });
+      const removed = await sandbox.runCommand({
+        cmd: "rm",
+        args: ["-rf", "--", directory],
+      });
+      if (removed.exitCode !== 0)
+        logger.error("Temporary organization Git cleanup failed");
     } catch {
       logger.error("Temporary organization Git cleanup failed");
     }

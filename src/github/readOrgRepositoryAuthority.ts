@@ -18,6 +18,7 @@ export async function readOrgRepositoryAuthority(
       `https://api.github.com/repos/recoupable/${encodeURIComponent(name)}`,
       {
         redirect: "error",
+        signal: AbortSignal.timeout(15_000),
         headers: {
           Accept: "application/vnd.github+json",
           Authorization: `Bearer ${token}`,

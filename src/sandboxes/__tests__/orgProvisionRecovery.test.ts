@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import "./provisionSandbox.fixture";
 import { provisionSandbox } from "../provisionSandbox";
 import { ensureOrgRepos } from "../ensureOrgRepos";
+import { setupOpenClaw } from "../setupOpenClaw";
 import { installOpenClaw } from "../installOpenClaw";
 import { pushOrgRepos } from "../git/pushOrgRepos";
 import { pushSandboxToGithub } from "../pushSandboxToGithub";
@@ -12,6 +13,9 @@ it("captures bindings before delegated setup", async () => {
   await provisionSandbox(sandbox, "sandbox", "account");
   expect(vi.mocked(ensureOrgRepos).mock.invocationCallOrder[0]).toBeLessThan(
     vi.mocked(installOpenClaw).mock.invocationCallOrder[0],
+  );
+  expect(vi.mocked(ensureOrgRepos).mock.invocationCallOrder[0]).toBeLessThan(
+    vi.mocked(setupOpenClaw).mock.invocationCallOrder[0],
   );
 });
 it("returns recovery status without running agents when a binding is missing", async () => {
@@ -25,6 +29,7 @@ it("returns recovery status without running agents when a binding is missing", a
     (await provisionSandbox(sandbox, "sandbox", "account")).githubPublished,
   ).toBe(false);
   expect(installOpenClaw).not.toHaveBeenCalled();
+  expect(setupOpenClaw).not.toHaveBeenCalled();
   expect(pushSandboxToGithub).not.toHaveBeenCalled();
 });
 it("does not publish root after an unconfirmed organization push", async () => {

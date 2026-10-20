@@ -2,14 +2,19 @@ import type { Sandbox } from "@vercel/sandbox";
 import { logger } from "@trigger.dev/sdk";
 import { runGitCommand } from "./runGitCommand";
 import { copyOpenClawToRepo } from "./copyOpenClawToRepo";
+import { validateOrgRootBindings } from "./git/validateOrgRootBindings";
 import { registerPublishedOrgs } from "./git/registerPublishedOrgs";
 import type { OrgPublicationResult } from "./git/org/types";
 import { stripGitmodulesTokens } from "./git/stripGitmodulesTokens";
 
 export async function prepareSandboxRootPublication(
   sandbox: Sandbox,
-  organizations: OrgPublicationResult[] = [],
+  organizations: OrgPublicationResult[],
 ): Promise<boolean> {
+  if (!(await validateOrgRootBindings(sandbox, organizations))) {
+    logger.error("Unbound organization reference; root preparation stopped");
+    return false;
+  }
   // Configure git user for commits
   if (
     !(await runGitCommand(
@@ -43,7 +48,10 @@ export async function prepareSandboxRootPublication(
   }
 
   // A broad add reads populated submodule HEADs. Pin acknowledged commits afterwards.
-  if (!(await registerPublishedOrgs(sandbox, organizations))) return false;
+  if (!(await registerPublishedOrgs(sandbox, organizations))) {
+    logger.error("Organization registration failed; root publication stopped");
+    return false;
+  }
 
   // Check if there are changes to commit
   const diffResult = await sandbox.runCommand({

@@ -19,15 +19,32 @@ export async function pushOrgRepos(
   if (batch.issues.length) return batch;
   try {
     const orgs = await getAccountOrgs(plan.accountId);
+    if (!orgs) {
+      batch.results = plan.targets.map((target) => ({
+        target,
+        state: "unconfirmed",
+      }));
+      logger.error("Organization membership unconfirmed", {
+        accountId: plan.accountId,
+      });
+      batch.issues.push({ reason: "membership_unavailable" });
+      return batch;
+    }
     if (
-      !orgs ||
       !(await validateOrgWorkspaceEntries(
         sandbox,
         plan.workspaceRoot,
         plan.targets.map((t) => t.alias),
       ))
     ) {
-      batch.issues.push({ reason: "membership_or_workspace_unavailable" });
+      batch.results = plan.targets.map((target) => ({
+        target,
+        state: "denied",
+      }));
+      logger.error("Organization workspace binding denied", {
+        accountId: plan.accountId,
+      });
+      batch.issues.push({ reason: "unbound_workspace_entry" });
       return batch;
     }
     for (const target of plan.targets) {
@@ -35,7 +52,7 @@ export async function pushOrgRepos(
         target.accountId === plan.accountId &&
         target.workspaceRoot === plan.workspaceRoot &&
         target.repository.name ===
-          `org-${target.alias}-${target.organizationId}` &&
+          `org-${target.alias}-${target.organizationId}`.toLowerCase() &&
         orgs.filter(
           (org) =>
             org.organizationId === target.organizationId &&
@@ -58,6 +75,10 @@ export async function pushOrgRepos(
     });
     batch.ready = batch.results.every((result) => result.state === "confirmed");
   } catch {
+    logger.error("Organization publication unconfirmed", {
+      accountId: plan.accountId,
+      stage: "membership_or_workspace",
+    });
     batch.issues.push({ reason: "organization_publication_unconfirmed" });
   }
   return batch;

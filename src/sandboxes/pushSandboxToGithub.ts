@@ -9,7 +9,7 @@ import { logSandboxGitFailure } from "./logSandboxGitFailure";
 /** Conflicts and preparation failures keep local work for caller recovery. */
 export async function pushSandboxToGithub(
   sandbox: Sandbox,
-  organizations: OrgPublicationResult[] = [],
+  organizations: OrgPublicationResult[],
 ): Promise<boolean> {
   try {
     logger.log("Pushing sandbox files to GitHub");

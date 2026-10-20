@@ -1,3 +1,4 @@
+import { OrgBindingError } from "./OrgBindingError";
 import type { Sandbox } from "@vercel/sandbox";
 import { posix } from "node:path";
 import { createOrgGithubRepo } from "../../../github/createOrgGithubRepo";
@@ -27,9 +28,10 @@ export async function prepareOrgPublicationTarget(
     normalizeOrgRepositoryUrl(created) !==
       `https://github.com/recoupable/${name}`
   )
-    throw new Error("repository_setup_binding_unavailable");
+    throw new OrgBindingError("repository_setup_binding_unavailable");
   const repository = await readOrgRepositoryAuthority(name);
-  if (!repository) throw new Error("repository_authority_unavailable");
+  if (!repository)
+    throw new OrgBindingError("repository_authority_unavailable");
   const workspacePath = posix.join(root, alias);
   return withOrgGitTransport(
     sandbox,
@@ -37,7 +39,7 @@ export async function prepareOrgPublicationTarget(
     undefined,
     async (runner, directory) => {
       const observed = await readSandboxMainRevision(runner);
-      if (!observed) throw new Error("remote_revision_unavailable");
+      if (!observed) throw new OrgBindingError("remote_revision_unavailable");
       const exists = await sandbox.runCommand({
         cmd: "test",
         args: ["-e", workspacePath],
@@ -50,9 +52,9 @@ export async function prepareOrgPublicationTarget(
           env: orgGitEnvironment(),
         });
         if (cloned.exitCode !== 0)
-          throw new Error("repository_clone_unavailable");
+          throw new OrgBindingError("repository_clone_unavailable");
       } else if (exists.exitCode !== 0)
-        throw new Error("workspace_presence_unavailable");
+        throw new OrgBindingError("workspace_presence_unavailable");
       const identity = await readOrgWorkspaceIdentity(
         sandbox,
         workspacePath,
@@ -66,7 +68,7 @@ export async function prepareOrgPublicationTarget(
         });
         const candidate = (await head.stdout()).trim();
         if (head.exitCode !== 0 || !/^[a-f0-9]{40}$/.test(candidate))
-          throw new Error("local_base_unavailable");
+          throw new OrgBindingError("local_base_unavailable");
         const ancestry = await sandbox.runCommand({
           cmd: "git",
           args: [
@@ -79,7 +81,8 @@ export async function prepareOrgPublicationTarget(
           ],
           env: orgGitEnvironment(identity.objectDirectory),
         });
-        if (ancestry.exitCode !== 0) throw new Error("workspace_base_conflict");
+        if (ancestry.exitCode !== 0)
+          throw new OrgBindingError("workspace_base_conflict");
       }
       return {
         accountId,

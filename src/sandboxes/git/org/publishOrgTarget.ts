@@ -1,3 +1,4 @@
+import { logger } from "@trigger.dev/sdk";
 import type { Sandbox } from "@vercel/sandbox";
 import { posix } from "node:path";
 import { readOrgRepositoryAuthority } from "../../../github/readOrgRepositoryAuthority";
@@ -28,8 +29,8 @@ export async function publishOrgTarget(
     )
       return { target, state };
     const authority = await readOrgRepositoryAuthority(target.repository.name);
+    if (!authority) return { target, state: "unconfirmed" };
     if (
-      !authority ||
       authority.id !== target.repository.id ||
       authority.url !== target.repository.url
     )
@@ -50,6 +51,10 @@ export async function publishOrgTarget(
     state = await pushOrgCandidate(sandbox, target, commitSha);
     return { target, state, commitSha };
   } catch {
+    logger.error("Organization target publication stopped", {
+      organizationId: target.organizationId,
+      state,
+    });
     return { target, state, commitSha };
   }
 }
