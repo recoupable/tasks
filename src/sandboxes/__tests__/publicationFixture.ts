@@ -22,6 +22,7 @@ export function publicationFixture(empty = false) {
       cwd,
       env,
       encoding: "utf8",
+      timeout: 5_000,
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   git(root, "init", "--bare", "--initial-branch=main", remote);
@@ -56,6 +57,7 @@ export function publicationFixture(empty = false) {
         cwd: worker,
         env,
         encoding: "utf8",
+        timeout: 5_000,
       });
       return {
         exitCode: result.status ?? 128,

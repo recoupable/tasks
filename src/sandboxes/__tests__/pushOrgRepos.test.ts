@@ -1,207 +1,85 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-vi.mock("@trigger.dev/sdk/v3", () => ({
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { orgPublicationFixture } from "./orgPublication.fixture";
+import { ensureOrgRepos } from "../ensureOrgRepos";
+import { pushOrgRepos } from "../git/pushOrgRepos";
+import { getAccountOrgs } from "../../recoup/getAccountOrgs";
+import { readOrgRepositoryAuthority } from "../../github/readOrgRepositoryAuthority";
+import { createOrgGithubRepo } from "../../github/createOrgGithubRepo";
+import { getSandboxHomeDir } from "../getSandboxHomeDir";
+vi.mock("../../recoup/getAccountOrgs");
+vi.mock("../../github/readOrgRepositoryAuthority");
+vi.mock("../../github/createOrgGithubRepo");
+vi.mock("../getSandboxHomeDir");
+vi.mock("@trigger.dev/sdk", () => ({
   logger: { log: vi.fn(), error: vi.fn() },
-  metadata: { set: vi.fn(), append: vi.fn() },
 }));
-
-vi.mock("../getSandboxHomeDir", () => ({
-  getSandboxHomeDir: vi.fn().mockResolvedValue("/root"),
-}));
-
-vi.mock("../logStep", () => ({
-  logStep: vi.fn(),
-}));
-
-const { pushOrgRepos } = await import("../git/pushOrgRepos");
-const { logStep } = await import("../logStep");
-
-function createMockSandbox() {
-  const runCommand = vi.fn();
-  return { runCommand } as any;
-}
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  process.env.GITHUB_TOKEN = "test-token";
-});
-
-describe("pushOrgRepos", () => {
-  it("skips when no GITHUB_TOKEN", async () => {
-    delete process.env.GITHUB_TOKEN;
-    const sandbox = createMockSandbox();
-
-    await pushOrgRepos(sandbox);
-
-    expect(sandbox.runCommand).not.toHaveBeenCalled();
+describe("bound organization publication", () => {
+  let f: ReturnType<typeof orgPublicationFixture>;
+  beforeEach(() => {
+    vi.stubEnv("GITHUB_TOKEN", "synthetic-unused-token");
+    f = orgPublicationFixture();
+    vi.mocked(getAccountOrgs).mockResolvedValue([
+      { organizationId: f.organizationId, organizationName: "Team" },
+    ]);
+    vi.mocked(createOrgGithubRepo).mockResolvedValue(f.repository.url);
+    vi.mocked(readOrgRepositoryAuthority).mockResolvedValue(f.repository);
+    vi.mocked(getSandboxHomeDir).mockResolvedValue(f.home);
   });
-
-  it("skips when no org repos found in workspace", async () => {
-    const sandbox = createMockSandbox();
-
-    sandbox.runCommand.mockImplementation(async (opts: any) => {
-      if (opts.cmd === "sh" && opts.args?.[1]?.includes("find")) {
-        return {
-          exitCode: 0,
-          stdout: async () => "",
-          stderr: async () => "",
-        };
-      }
-      const finished = { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-      if (opts.cmd === "openclaw") {
-        return { wait: vi.fn().mockResolvedValue(finished) };
-      }
-      return finished;
-    });
-
-    await pushOrgRepos(sandbox);
-
-    // Should not call openclaw
-    const openclawCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) => call[0]?.cmd === "openclaw"
+  afterEach(() => {
+    rmSync(f.root, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+  it("publishes a captured candidate to its authorized repository", async () => {
+    const plan = await ensureOrgRepos(f.sandbox, "account");
+    expect(plan.issues).toEqual([]);
+    writeFileSync(join(f.workspace, "new.txt"), "new work");
+    const result = await pushOrgRepos(f.sandbox, plan);
+    expect(result.ready).toBe(true);
+    expect(result.results[0].state).toBe("confirmed");
+    expect(f.git(f.root, "--git-dir", f.remote, "rev-parse", "main")).toBe(
+      result.results[0].commitSha,
     );
-    expect(openclawCall).toBeUndefined();
   });
-
-  it("calls OpenClaw with a push-only message", async () => {
-    const sandbox = createMockSandbox();
-
-    sandbox.runCommand.mockImplementation(async (opts: any) => {
-      if (opts.cmd === "sh" && opts.args?.[1]?.includes("find")) {
-        return {
-          exitCode: 0,
-          stdout: async () => "recoup\nmyco-wtf\n",
-          stderr: async () => "",
-        };
-      }
-      const finished = { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-      if (opts.cmd === "openclaw") {
-        return { wait: vi.fn().mockResolvedValue(finished) };
-      }
-      return finished;
-    });
-
-    await pushOrgRepos(sandbox);
-
-    const openclawCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) =>
-        call[0]?.cmd === "openclaw" &&
-        call[0]?.args?.[0] === "agent" &&
-        call[0]?.args?.[1] === "--agent" &&
-        call[0]?.args?.[2] === "main" &&
-        call[0]?.args?.[3] === "--message"
+  it("preserves newer remote work and the local candidate", async () => {
+    const plan = await ensureOrgRepos(f.sandbox, "account");
+    const peer = f.advancePeer();
+    writeFileSync(join(f.workspace, "new.txt"), "recover me");
+    const result = await pushOrgRepos(f.sandbox, plan);
+    expect(result.ready).toBe(false);
+    expect(f.git(f.root, "--git-dir", f.remote, "rev-parse", "main")).toBe(
+      peer,
     );
-    expect(openclawCall).toBeDefined();
-
-    const message = openclawCall![0].args[4];
-    // Should mention commit and push
-    expect(message).toContain("commit");
-    expect(message).toContain("push");
+    expect(f.git(f.workspace, "show", "HEAD:new.txt")).toBe("recover me");
   });
-
-  /**
-   * The simplified prompt should NOT contain submodule registration
-   * instructions — that responsibility moved to copyOpenClawToRepo.
-   */
-  it("message does NOT contain submodule registration instructions", async () => {
-    const sandbox = createMockSandbox();
-
-    sandbox.runCommand.mockImplementation(async (opts: any) => {
-      if (opts.cmd === "sh" && opts.args?.[1]?.includes("find")) {
-        return {
-          exitCode: 0,
-          stdout: async () => "recoup\n",
-          stderr: async () => "",
-        };
-      }
-      const finished = { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-      if (opts.cmd === "openclaw") {
-        return { wait: vi.fn().mockResolvedValue(finished) };
-      }
-      return finished;
-    });
-
-    await pushOrgRepos(sandbox);
-
-    const openclawCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) => call[0]?.cmd === "openclaw"
+  it("denies retargeted origins before any push", async () => {
+    const plan = await ensureOrgRepos(f.sandbox, "account");
+    f.git(
+      f.workspace,
+      "remote",
+      "set-url",
+      "origin",
+      "https://github.com/recoupable/other",
     );
-    const message = openclawCall![0].args[4];
-
-    // Should NOT contain submodule-related instructions
-    expect(message).not.toContain("git submodule add");
-    expect(message).not.toContain(".gitmodules");
-    expect(message).not.toContain("x-access-token");
-    expect(message).not.toContain("GITHUB_TOKEN");
-    expect(message).not.toContain("git rm");
-    expect(message).not.toContain("--cached");
-    expect(message).not.toContain("STEP 2");
+    const result = await pushOrgRepos(f.sandbox, plan);
+    expect(result.results[0].state).toBe("denied");
+    expect(f.commands.some((c) => c.args.includes("push"))).toBe(false);
   });
-
-  it("uses resolved home dir for workspace path (no tilde)", async () => {
-    const { getSandboxHomeDir } = await import("../getSandboxHomeDir");
-    vi.mocked(getSandboxHomeDir).mockResolvedValueOnce("/home/sandbox");
-
-    const sandbox = createMockSandbox();
-
-    sandbox.runCommand.mockImplementation(async (opts: any) => {
-      if (opts.cmd === "sh" && opts.args?.[1]?.includes("find")) {
-        return {
-          exitCode: 0,
-          stdout: async () => "recoup\n",
-          stderr: async () => "",
-        };
-      }
-      const finished = { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-      if (opts.cmd === "openclaw") {
-        return { wait: vi.fn().mockResolvedValue(finished) };
-      }
-      return finished;
+  it("denies revoked membership and replaced provider identity", async () => {
+    const plan = await ensureOrgRepos(f.sandbox, "account");
+    vi.mocked(getAccountOrgs).mockResolvedValue([]);
+    expect((await pushOrgRepos(f.sandbox, plan)).ready).toBe(false);
+    vi.mocked(getAccountOrgs).mockResolvedValue([
+      { organizationId: f.organizationId, organizationName: "Team" },
+    ]);
+    vi.mocked(readOrgRepositoryAuthority).mockResolvedValue({
+      ...f.repository,
+      id: 999,
     });
-
-    await pushOrgRepos(sandbox);
-
-    // The find command should use resolved path, not ~
-    const findCall = sandbox.runCommand.mock.calls.find(
-      (call: any[]) =>
-        call[0]?.cmd === "sh" && call[0]?.args?.[1]?.includes("find")
-    );
-    expect(findCall![0].args[1]).toContain("/home/sandbox/");
-    expect(findCall![0].args[1]).not.toContain("~");
-  });
-
-  it("logs error when OpenClaw fails", async () => {
-    const { logger } = await import("@trigger.dev/sdk/v3");
-    const sandbox = createMockSandbox();
-
-    sandbox.runCommand.mockImplementation(async (opts: any) => {
-      if (opts.cmd === "sh" && opts.args?.[1]?.includes("find")) {
-        return {
-          exitCode: 0,
-          stdout: async () => "recoup\n",
-          stderr: async () => "",
-        };
-      }
-      // OpenClaw fails
-      if (opts.cmd === "openclaw") {
-        return {
-          wait: vi.fn().mockResolvedValue({
-            exitCode: 1,
-            stdout: async () => "",
-            stderr: async () => "OpenClaw error\n",
-          }),
-        };
-      }
-      const finished = { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-      return finished;
-    });
-
-    await pushOrgRepos(sandbox);
-
-    expect(logStep).toHaveBeenCalledWith(
-      expect.stringContaining("failed"),
-      false,
-      expect.objectContaining({ stderr: expect.any(String) })
+    expect((await pushOrgRepos(f.sandbox, plan)).results[0].state).toBe(
+      "denied",
     );
   });
 });

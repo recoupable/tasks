@@ -2,12 +2,13 @@ import type { Sandbox } from "@vercel/sandbox";
 import { logger } from "@trigger.dev/sdk";
 import { runGitCommand } from "./runGitCommand";
 import { copyOpenClawToRepo } from "./copyOpenClawToRepo";
-import { addOrgSubmodules } from "./git/addOrgSubmodules";
+import { registerPublishedOrgs } from "./git/registerPublishedOrgs";
+import type { OrgPublicationResult } from "./git/org/types";
 import { stripGitmodulesTokens } from "./git/stripGitmodulesTokens";
-import { pushOrgRepos } from "./git/pushOrgRepos";
 
 export async function prepareSandboxRootPublication(
   sandbox: Sandbox,
+  organizations: OrgPublicationResult[] = [],
 ): Promise<boolean> {
   // Configure git user for commits
   if (
@@ -30,14 +31,11 @@ export async function prepareSandboxRootPublication(
     return false;
   }
 
-  // Push org repo changes to their remotes (simple OpenClaw prompt)
-  await pushOrgRepos(sandbox);
-
   // Copy .openclaw (skip orgs/) into repo
   await copyOpenClawToRepo(sandbox);
 
   // Register org repos as submodules (deterministic)
-  await addOrgSubmodules(sandbox);
+  if (!(await registerPublishedOrgs(sandbox, organizations))) return false;
 
   // Strip auth tokens from .gitmodules
   await stripGitmodulesTokens(sandbox);

@@ -1,9 +1,9 @@
-import type { Sandbox } from "@vercel/sandbox";
+import type { GitCommandRunner } from "./GitCommandRunner";
 import { logSandboxGitFailure } from "./logSandboxGitFailure";
 
 /** One push against the original observation; no fetch, reset or retry. */
 export async function pushSandboxMainIfUnchanged(
-  sandbox: Sandbox,
+  sandbox: GitCommandRunner,
   observed: { sha: string | null },
 ): Promise<boolean> {
   let stage: Parameters<typeof logSandboxGitFailure>[0] = "identify_local";

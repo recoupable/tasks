@@ -8,6 +8,9 @@ beforeEach(() => vi.clearAllMocks());
 it("distinguishes no configured repository from a failed publication", async () => {
   vi.mocked(ensureGithubRepo).mockResolvedValueOnce(undefined);
   const result = await provisionSandbox({} as Sandbox, "sbx", "actor");
-  expect(result).toEqual({ githubRepo: undefined, githubPublished: null });
+  expect(result).toMatchObject({
+    githubRepo: undefined,
+    githubPublished: null,
+  });
   expect(pushSandboxToGithub).not.toHaveBeenCalled();
 });

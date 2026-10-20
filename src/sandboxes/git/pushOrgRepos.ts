@@ -1,68 +1,64 @@
+import { logger } from "@trigger.dev/sdk";
 import type { Sandbox } from "@vercel/sandbox";
-import { logger } from "@trigger.dev/sdk/v3";
-import { runOpenClawAgent } from "../runOpenClawAgent";
-import { getSandboxHomeDir } from "../getSandboxHomeDir";
+import { sanitizeRepoName } from "../../github/sanitizeRepoName";
+import { getAccountOrgs } from "../../recoup/getAccountOrgs";
+import { publishOrgTarget } from "./org/publishOrgTarget";
+import { validateOrgWorkspaceEntries } from "./org/validateOrgWorkspaceEntries";
+import type { OrgPublicationBatch, OrgPublicationPlan } from "./org/types";
 
-/**
- * Pushes changes in each org repo to its GitHub remote via OpenClaw.
- *
- * This is the AI-delegated half of org handling: OpenClaw commits and
- * force-pushes each org repo. The deterministic submodule registration
- * happens later in `copyOpenClawToRepo`.
- *
- * @param sandbox - The Vercel Sandbox instance
- */
+/** A server-created plan is required; filesystem discovery never grants publication. */
 export async function pushOrgRepos(
-  sandbox: Sandbox
-): Promise<void> {
-  const githubToken = process.env.GITHUB_TOKEN;
-
-  if (!githubToken) {
-    logger.log("No GITHUB_TOKEN, skipping org submodule registration");
-    return;
+  sandbox: Sandbox,
+  plan: OrgPublicationPlan,
+): Promise<OrgPublicationBatch> {
+  const batch: OrgPublicationBatch = {
+    ready: false,
+    results: [],
+    issues: [...plan.issues],
+  };
+  if (batch.issues.length) return batch;
+  try {
+    const orgs = await getAccountOrgs(plan.accountId);
+    if (
+      !orgs ||
+      !(await validateOrgWorkspaceEntries(
+        sandbox,
+        plan.workspaceRoot,
+        plan.targets.map((t) => t.alias),
+      ))
+    ) {
+      batch.issues.push({ reason: "membership_or_workspace_unavailable" });
+      return batch;
+    }
+    for (const target of plan.targets) {
+      const authorized =
+        target.accountId === plan.accountId &&
+        target.workspaceRoot === plan.workspaceRoot &&
+        target.repository.name ===
+          `org-${target.alias}-${target.organizationId}` &&
+        orgs.filter(
+          (org) =>
+            org.organizationId === target.organizationId &&
+            sanitizeRepoName(org.organizationName) === target.alias &&
+            org.organizationName.trim(),
+        ).length === 1;
+      batch.results.push(
+        authorized
+          ? await publishOrgTarget(sandbox, target)
+          : { target, state: "denied" },
+      );
+    }
+    logger.log("Organization publication outcomes", {
+      accountId: plan.accountId,
+      results: batch.results.map((result) => ({
+        organizationId: result.target.organizationId,
+        state: result.state,
+        commitSha: result.commitSha,
+      })),
+    });
+    batch.ready = batch.results.every((result) => result.state === "confirmed");
+  } catch {
+    batch.issues.push({ reason: "organization_publication_unconfirmed" });
   }
-
-  const homeDir = await getSandboxHomeDir(sandbox);
-  const workspaceOrgs = `${homeDir}/.openclaw/workspace/orgs`;
-
-  // Find org directories that are git repos
-  const findResult = await sandbox.runCommand({
-    cmd: "sh",
-    args: [
-      "-c",
-      `find ${workspaceOrgs} -mindepth 1 -maxdepth 1 -type d -exec test -d {}/.git \\; -print 2>/dev/null | xargs -I{} basename {}`,
-    ],
-  });
-
-  const stdout = (await findResult.stdout()) || "";
-  const orgNames = stdout
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (orgNames.length === 0) {
-    logger.log("No org repos found, skipping submodule registration");
-    return;
-  }
-
-  logger.log("Pushing org repo changes via OpenClaw", { orgNames });
-
-  const message = [
-    "Commit and push changes for each org repo.",
-    "Org repos are at ~/.openclaw/workspace/orgs/",
-    "",
-    "For each org directory that is a git repo:",
-    "1. git add -A",
-    "2. git commit -m 'Update org files' (skip if nothing to commit)",
-    "3. git push origin HEAD:main --force (always push if there are unpushed commits)",
-  ].join("\n");
-
-  await runOpenClawAgent(sandbox, {
-    label: "Pushing org repo changes",
-    message,
-  });
-
-  logger.log("Org repo push complete", {
-    count: orgNames.length,
-  });
+  return batch;
 }

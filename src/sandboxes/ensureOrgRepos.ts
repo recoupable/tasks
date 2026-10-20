@@ -1,97 +1,91 @@
 import type { Sandbox } from "@vercel/sandbox";
-import { logger } from "@trigger.dev/sdk/v3";
+import { posix } from "node:path";
+import { z } from "zod";
 import { getAccountOrgs } from "../recoup/getAccountOrgs";
-import { createOrgGithubRepo } from "../github/createOrgGithubRepo";
 import { sanitizeRepoName } from "../github/sanitizeRepoName";
-import { runOpenClawAgent } from "./runOpenClawAgent";
-import { logStep } from "./logStep";
+import { getSandboxHomeDir } from "./getSandboxHomeDir";
+import { prepareOrgPublicationTarget } from "./git/org/prepareOrgPublicationTarget";
+import { validateOrgWorkspaceEntries } from "./git/org/validateOrgWorkspaceEntries";
+import type { OrgPublicationPlan } from "./git/org/types";
 
-/**
- * Ensures each of the account's organizations has a GitHub repo and
- * tells OpenClaw to clone them into `orgs/` in the workspace.
- *
- * Must be called AFTER `setupOpenClaw` (so OpenClaw is available) and
- * BEFORE `ensureSetupSandbox` (so skills write into existing org dirs).
- *
- * @param sandbox - The Vercel Sandbox instance
- * @param accountId - The account ID to look up orgs for
- */
+/** Authority and observed versions are captured before any delegated setup work. */
 export async function ensureOrgRepos(
   sandbox: Sandbox,
-  accountId: string
-): Promise<void> {
-  const githubToken = process.env.GITHUB_TOKEN;
-
-  if (!githubToken) {
-    logger.error("Missing GITHUB_TOKEN for org repos");
-    return;
-  }
-
-  logStep("Fetching account organizations");
-  const orgs = await getAccountOrgs(accountId);
-
-  if (!orgs || orgs.length === 0) {
-    logger.log("No organizations found, skipping org repo setup");
-    return;
-  }
-
-  logStep("Setting up org repos");
-
-  // Create GitHub repos for each org and collect URLs
-  const orgRepos: Array<{ name: string; url: string }> = [];
-
-  for (const org of orgs) {
-    const repoUrl = await createOrgGithubRepo(
-      org.organizationName,
-      org.organizationId
-    );
-
-    if (!repoUrl) {
-      logger.error("Failed to create org GitHub repo, skipping", {
-        orgId: org.organizationId,
-        orgName: org.organizationName,
-      });
-      continue;
+  accountId: string,
+): Promise<OrgPublicationPlan> {
+  const plan: OrgPublicationPlan = {
+    accountId,
+    workspaceRoot: "",
+    targets: [],
+    issues: [],
+  };
+  try {
+    const orgs = await getAccountOrgs(accountId);
+    if (!orgs) {
+      plan.issues.push({ reason: "membership_unavailable" });
+      return plan;
     }
-
-    orgRepos.push({
-      name: sanitizeRepoName(org.organizationName),
-      url: repoUrl,
+    const aliases = orgs.map((org) => sanitizeRepoName(org.organizationName));
+    const ids = new Set<string>();
+    for (const [index, org] of orgs.entries()) {
+      if (
+        !z.string().uuid().safeParse(org.organizationId).success ||
+        !org.organizationName ||
+        ids.has(org.organizationId) ||
+        aliases.filter((alias) => alias === aliases[index]).length !== 1
+      ) {
+        plan.issues.push({
+          organizationId: org.organizationId,
+          reason: "ambiguous_organization_binding",
+        });
+      }
+      ids.add(org.organizationId);
+    }
+    if (plan.issues.length) return plan;
+    const home = await getSandboxHomeDir(sandbox);
+    if (!home.startsWith("/") || /[\x00-\x1f:]/.test(home))
+      throw new Error("Invalid workspace home");
+    const root = posix.join(home, ".openclaw/workspace/orgs");
+    const made = await sandbox.runCommand({
+      cmd: "mkdir",
+      args: ["-p", "--", root],
     });
+    const physical = await sandbox.runCommand({
+      cmd: "realpath",
+      args: ["-e", "--", root],
+    });
+    if (
+      made.exitCode !== 0 ||
+      physical.exitCode !== 0 ||
+      (await physical.stdout()).trim() !== root
+    )
+      throw new Error("Indirect organization workspace");
+    plan.workspaceRoot = root;
+    if (!(await validateOrgWorkspaceEntries(sandbox, root, aliases))) {
+      plan.issues.push({ reason: "unbound_workspace_entry" });
+      return plan;
+    }
+    for (const org of orgs) {
+      try {
+        plan.targets.push(
+          await prepareOrgPublicationTarget(sandbox, accountId, org, root),
+        );
+      } catch (error) {
+        const reason =
+          error instanceof Error &&
+          /^(repository_setup_binding_unavailable|repository_authority_unavailable|remote_revision_unavailable|repository_clone_unavailable|workspace_presence_unavailable|local_base_unavailable|workspace_base_conflict)$/.test(
+            error.message,
+          )
+            ? error.message
+            : "target_binding_unavailable";
+        plan.issues.push({
+          organizationId: org.organizationId,
+          reason,
+        });
+      }
+    }
+  } catch {
+    plan.issues.push({ reason: "organization_setup_unconfirmed" });
   }
-
-  if (orgRepos.length === 0) {
-    logger.log("No org repos created, skipping clone step");
-    return;
-  }
-
-  // Build the prompt for OpenClaw to clone the repos
-  const repoList = orgRepos
-    .map((r) => `- "${r.name}" → ${r.url}`)
-    .join("\n");
-
-  const message = [
-    "Clone the following GitHub repositories into orgs/ in your workspace.",
-    "Use the GITHUB_TOKEN environment variable for authentication.",
-    "Replace https://github.com/ with https://x-access-token:$GITHUB_TOKEN@github.com/ in the clone URL.",
-    "",
-    "For each repo, check orgs/{name}:",
-    "- If it has a .git directory OR a .git file (submodule gitlink), it's already a git repo — run: git -C orgs/{name} pull origin main",
-    "- If it exists but has neither a .git directory nor a .git file, remove it and clone fresh.",
-    "- If it does not exist, clone the repo.",
-    "",
-    "IMPORTANT: Submodules use a .git file (gitlink), not a .git directory.",
-    "Always check for BOTH: [ -d orgs/{name}/.git ] || [ -f orgs/{name}/.git ]",
-    "",
-    repoList,
-  ].join("\n");
-
-  // GITHUB_TOKEN and RECOUP_API_KEY are injected into openclaw.json
-  // by setupOpenClaw — no need to pass them via env here.
-  await runOpenClawAgent(sandbox, {
-    label: "Cloning org repos",
-    message,
-  });
-
-  logStep("Org repo setup complete");
+  return plan;
 }

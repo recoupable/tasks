@@ -21,7 +21,12 @@ vi.mock("../writeReadme", () => ({
 }));
 
 vi.mock("../ensureOrgRepos", () => ({
-  ensureOrgRepos: vi.fn().mockResolvedValue(undefined),
+  ensureOrgRepos: vi.fn().mockResolvedValue({
+    accountId: "acc_456",
+    workspaceRoot: "/synthetic",
+    targets: [],
+    issues: [],
+  }),
 }));
 
 vi.mock("../ensureSetupSandbox", () => ({
@@ -30,4 +35,10 @@ vi.mock("../ensureSetupSandbox", () => ({
 
 vi.mock("../pushSandboxToGithub", () => ({
   pushSandboxToGithub: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("../git/pushOrgRepos", () => ({
+  pushOrgRepos: vi
+    .fn()
+    .mockResolvedValue({ ready: true, results: [], issues: [] }),
 }));
