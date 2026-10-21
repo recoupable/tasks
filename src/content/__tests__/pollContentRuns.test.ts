@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@trigger.dev/sdk/v3", () => ({
+vi.mock("@trigger.dev/sdk", () => ({
   runs: {
     poll: vi.fn(),
   },
@@ -10,7 +10,7 @@ vi.mock("../../sandboxes/logStep", () => ({
   logStep: vi.fn(),
 }));
 
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import { pollContentRuns } from "../pollContentRuns";
 
 const mockPoll = vi.mocked(runs.poll);
@@ -29,8 +29,18 @@ describe("pollContentRuns", () => {
     const results = await pollContentRuns(["run-1", "run-2"]);
 
     expect(results).toEqual([
-      { runId: "run-1", status: "completed", videoUrl: "https://v.mp4", captionText: "caption" },
-      { runId: "run-2", status: "completed", videoUrl: "https://v.mp4", captionText: "caption" },
+      {
+        runId: "run-1",
+        status: "completed",
+        videoUrl: "https://v.mp4",
+        captionText: "caption",
+      },
+      {
+        runId: "run-2",
+        status: "completed",
+        videoUrl: "https://v.mp4",
+        captionText: "caption",
+      },
     ]);
     expect(mockPoll).toHaveBeenCalledTimes(2);
     expect(mockPoll).toHaveBeenCalledWith("run-1", { pollIntervalMs: 30_000 });
@@ -76,7 +86,12 @@ describe("pollContentRuns", () => {
     const results = await pollContentRuns(["run-1"]);
 
     expect(results).toEqual([
-      { runId: "run-1", status: "completed", videoUrl: undefined, captionText: undefined },
+      {
+        runId: "run-1",
+        status: "completed",
+        videoUrl: undefined,
+        captionText: undefined,
+      },
     ]);
   });
 
@@ -105,7 +120,12 @@ describe("pollContentRuns", () => {
     const results = await pollContentRuns(["run-1", "run-2", "run-3"]);
 
     expect(results).toEqual([
-      { runId: "run-1", status: "completed", videoUrl: "https://v.mp4", captionText: undefined },
+      {
+        runId: "run-1",
+        status: "completed",
+        videoUrl: "https://v.mp4",
+        captionText: undefined,
+      },
       { runId: "run-2", status: "failed", error: "Run failed" },
       { runId: "run-3", status: "failed", error: "Network error" },
     ]);
